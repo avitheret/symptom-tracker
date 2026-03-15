@@ -87,7 +87,7 @@ export default function AIInsightsCard() {
           <div className="p-1.5 bg-violet-200 rounded-lg">
             <Sparkles size={13} className="text-violet-700" />
           </div>
-          <span className="text-xs font-semibold text-violet-700">Powered by Claude</span>
+          <span className="text-xs font-semibold text-violet-700">AI-Powered</span>
           {latestTimestamp > 0 && (
             <span className="ml-auto text-xs text-slate-400">{timeAgo(latestTimestamp)}</span>
           )}
