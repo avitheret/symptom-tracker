@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clock, Timer, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import type { Condition, Symptom, TrackingEntry } from '../types';
 import { PREDEFINED_TRIGGERS } from '../types';
@@ -27,6 +27,7 @@ export default function TrackingModal({ condition, preselectedSymptom, existingE
   const [date,             setDate]             = useState(existingEntry?.date ?? todayStr());
   const [time,             setTime]             = useState(existingEntry?.time ?? nowTime());
   const [severity,         setSeverity]         = useState(existingEntry?.severity ?? 5);
+  const [duration,         setDuration]         = useState(existingEntry?.duration ?? '');
   const [notes,            setNotes]            = useState(existingEntry?.notes ?? '');
   const [errors,           setErrors]           = useState<Record<string,string>>({});
   const [selectedTriggers, setSelectedTriggers] = useState<string[]>(existingEntry?.triggers ?? []);
@@ -47,6 +48,7 @@ export default function TrackingModal({ condition, preselectedSymptom, existingE
 
     const symptom = condition.symptoms.find(s => s.id === symptomId)!;
     const triggers = selectedTriggers.length > 0 ? selectedTriggers : undefined;
+    const durationVal = duration.trim() || undefined;
 
     if (isEdit) {
       updateEntry(existingEntry.id, {
@@ -57,6 +59,7 @@ export default function TrackingModal({ condition, preselectedSymptom, existingE
         date,
         time,
         severity,
+        duration:      durationVal,
         notes:         notes.trim(),
         triggers,
       });
@@ -73,6 +76,7 @@ export default function TrackingModal({ condition, preselectedSymptom, existingE
         date,
         time,
         severity,
+        duration:      durationVal,
         notes:         notes.trim(),
         triggers,
         // If opened from voice, mark for review
@@ -177,6 +181,26 @@ export default function TrackingModal({ condition, preselectedSymptom, existingE
             <span>Mild (1–3)</span>
             <span>Moderate (4–6)</span>
             <span>Severe (7–10)</span>
+          </div>
+        </div>
+
+        {/* ── Duration ─────────────────────────────── */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+            <Timer size={13} className="inline mr-1" />Duration <span className="font-normal text-slate-400">(optional)</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {['A few min', '30 min', '1 hour', '2+ hours', 'All day'].map(opt => (
+              <Chip
+                key={opt}
+                selected={duration === opt}
+                activeColor="#6366f1"
+                size="sm"
+                onClick={() => setDuration(prev => prev === opt ? '' : opt)}
+              >
+                {opt}
+              </Chip>
+            ))}
           </div>
         </div>
 

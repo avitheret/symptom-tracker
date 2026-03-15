@@ -41,6 +41,7 @@ export interface TrackingEntry {
   dayOfWeek: string;          // e.g. "Monday"
   time: string;               // HH:MM (24h)
   severity: number;           // 1–10
+  duration?: string;           // e.g. "30 min", "2 hours", "all day"
   notes: string;
   triggers?: string[];        // optional trigger names linked to this episode
   createdAt: number;          // timestamp for sorting
