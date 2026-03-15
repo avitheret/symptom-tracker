@@ -1,7 +1,6 @@
 import type { AIInsight, InsightCategory, InsightSeverity, TrackingEntry, DailyCheckIn, MedicationLog, Condition } from '../types';
 
 interface InsightInput {
-  apiKey: string;
   patientName: string;
   diagnosis: string;
   entries: TrackingEntry[];
@@ -93,7 +92,7 @@ function summarizeMedications(medications: MedicationLog[]): string {
 }
 
 export async function generateInsights(input: InsightInput): Promise<AIInsight[]> {
-  const { apiKey, patientName, diagnosis, entries, checkIns, medications, conditions } = input;
+  const { patientName, diagnosis, entries, checkIns, medications, conditions } = input;
 
   const conditionList = conditions.map(c =>
     `${c.name} (tracking: ${c.symptoms.map(s => s.name).join(', ')})`
@@ -133,13 +132,10 @@ Use "urgent" sparingly — only for patterns that genuinely suggest the patient 
 
 Respond ONLY with a valid JSON array, no other text.`;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch('/.netlify/functions/claude-proxy', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
@@ -150,7 +146,7 @@ Respond ONLY with a valid JSON array, no other text.`;
 
   if (!response.ok) {
     const errBody = await response.text();
-    if (response.status === 401) throw new Error('Invalid API key. Please check your Anthropic API key in settings.');
+    if (response.status === 401) throw new Error('AI service configuration error. Please contact support.');
     if (response.status === 429) throw new Error('Rate limited. Please wait a moment and try again.');
     throw new Error(`API error (${response.status}): ${errBody}`);
   }
