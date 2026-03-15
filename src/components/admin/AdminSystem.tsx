@@ -95,6 +95,7 @@ export default function AdminSystem() {
       medicationLogs: state.medicationLogs,
       medicationSchedules: state.medicationSchedules,
       notes: state.notes,
+      aiInsights: state.aiInsights,
     };
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -181,7 +182,7 @@ export default function AdminSystem() {
       const merged = { ...current };
 
       // Merge arrays (deduplicate by id if possible)
-      const arrayKeys = ['patients', 'entries', 'checkIns', 'triggerLogs', 'medicationLogs', 'medicationSchedules', 'notes'] as const;
+      const arrayKeys = ['patients', 'entries', 'checkIns', 'triggerLogs', 'medicationLogs', 'medicationSchedules', 'notes', 'aiInsights'] as const;
 
       for (const key of arrayKeys) {
         if (Array.isArray(importData[key])) {

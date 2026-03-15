@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import type {
-  Condition, DailyCheckIn, ExtractionResult, ExtractionStatus,
+  AIInsight, Condition, DailyCheckIn, ExtractionResult, ExtractionStatus,
   ExtractedCheckIn, ExtractedMedication, ExtractedSymptom, ExtractedTrigger,
   MedicationLog, MedicationSchedule, NotificationPreferences, Note,
   Patient, PatientCondition, Symptom,
@@ -27,6 +27,7 @@ interface State {
   checkIns: DailyCheckIn[];
   medicationLogs: MedicationLog[];
   notes: Note[];
+  aiInsights: AIInsight[];
   medicationSchedules: MedicationSchedule[];
   notificationPrefs: NotificationPreferences;
   selectedConditionId: string | null;
@@ -47,6 +48,7 @@ const initialState: State = {
   checkIns: [],
   medicationLogs: [],
   notes: [],
+  aiInsights: [],
   medicationSchedules: [],
   notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
   selectedConditionId: null,
@@ -80,6 +82,8 @@ type Action =
   | { type: 'UPDATE_NOTE'; id: string; text: string; updatedAt: number }
   | { type: 'DELETE_NOTE'; id: string }
   | { type: 'UPDATE_NOTE_EXTRACTION'; id: string; patch: Partial<Pick<Note, 'extractionStatus' | 'extractedAt' | 'linkedLogIds'>> }
+  | { type: 'SET_AI_INSIGHTS'; insights: AIInsight[] }
+  | { type: 'DISMISS_AI_INSIGHT'; id: string }
   | { type: 'ADD_MED_SCHEDULE'; schedule: MedicationSchedule }
   | { type: 'UPDATE_MED_SCHEDULE'; id: string; patch: Partial<Omit<MedicationSchedule, 'id' | 'patientId' | 'createdAt'>> }
   | { type: 'DELETE_MED_SCHEDULE'; id: string }
@@ -311,6 +315,17 @@ function reducer(state: State, action: Action): State {
         ),
       };
 
+    case 'SET_AI_INSIGHTS':
+      return { ...state, aiInsights: action.insights };
+
+    case 'DISMISS_AI_INSIGHT':
+      return {
+        ...state,
+        aiInsights: state.aiInsights.map(i =>
+          i.id === action.id ? { ...i, dismissed: true } : i
+        ),
+      };
+
     case 'ADD_MED_SCHEDULE':
       return { ...state, medicationSchedules: [...state.medicationSchedules, action.schedule] };
 
@@ -393,6 +408,7 @@ function migrateV1ToV2(): State | null {
       checkIns: [],
       medicationLogs: [],
       notes: [],
+      aiInsights: [],
       medicationSchedules: [],
       notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
       selectedConditionId: (v1.selectedConditionId as string | null) ?? null,
@@ -417,6 +433,7 @@ function loadInitialState(): State {
           checkIns: saved.checkIns ?? [],
           medicationLogs: saved.medicationLogs ?? [],
           notes: saved.notes ?? [],
+          aiInsights: saved.aiInsights ?? [],
           medicationSchedules: saved.medicationSchedules ?? [],
           notificationPrefs: saved.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS,
           selectedConditionId: saved.selectedConditionId ?? null,
@@ -480,6 +497,8 @@ interface ContextValue {
   deleteNote: (id: string) => void;
   updateNoteExtraction: (id: string, patch: Partial<Pick<Note, 'extractionStatus' | 'extractedAt' | 'linkedLogIds'>>) => void;
   confirmNoteExtraction: (result: ExtractionResult) => void;
+  setAIInsights: (insights: AIInsight[]) => void;
+  dismissAIInsight: (id: string) => void;
   addMedSchedule: (input: Omit<MedicationSchedule, 'id' | 'patientId' | 'createdAt' | 'updatedAt' | 'doseTimes'>) => void;
   updateMedSchedule: (id: string, patch: Partial<Omit<MedicationSchedule, 'id' | 'patientId' | 'createdAt'>>) => void;
   deleteMedSchedule: (id: string) => void;
@@ -510,6 +529,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         checkIns: state.checkIns,
         medicationLogs: state.medicationLogs,
         notes: state.notes,
+        aiInsights: state.aiInsights,
         medicationSchedules: state.medicationSchedules,
         notificationPrefs: state.notificationPrefs,
         selectedConditionId: state.selectedConditionId,
@@ -517,7 +537,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore quota errors
     }
-  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.notes, state.medicationSchedules, state.notificationPrefs, state.selectedConditionId]);
+  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.notes, state.aiInsights, state.medicationSchedules, state.notificationPrefs, state.selectedConditionId]);
 
   const createPatient = useCallback((name: string, conditionIds: string[], extra?: { dateOfBirth?: string; notes?: string; diagnosis?: string }) => {
     const id = `pat-${Date.now()}`;
@@ -615,6 +635,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const disapproveEntry = useCallback((id: string) => {
     dispatch({ type: 'UPDATE_ENTRY', id, patch: { reviewStatus: 'disapproved' } });
+  }, []);
+
+  const setAIInsights = useCallback((insights: AIInsight[]) => {
+    dispatch({ type: 'SET_AI_INSIGHTS', insights });
+  }, []);
+
+  const dismissAIInsight = useCallback((id: string) => {
+    dispatch({ type: 'DISMISS_AI_INSIGHT', id });
   }, []);
 
   const addMedSchedule = useCallback(
@@ -939,6 +967,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deleteNote,
         updateNoteExtraction,
         confirmNoteExtraction,
+        setAIInsights,
+        dismissAIInsight,
         addMedSchedule,
         updateMedSchedule,
         deleteMedSchedule,

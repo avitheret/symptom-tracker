@@ -7,6 +7,7 @@ import AddConditionModal from './AddConditionModal';
 import ConditionCard from './ConditionCard';
 import ForecastCard from './ForecastCard';
 import ReviewQueue from './ReviewQueue';
+import AIInsightsCard from './AIInsightsCard';
 import MedicationTab from './MedicationTab';
 import DashboardCustomizer from './DashboardCustomizer';
 import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState } from './ui';
@@ -28,9 +29,12 @@ function loadPrefs(): WidgetId[] {
         if (idx >= 0) saved.splice(idx, 0, 'voiceReview');
         else saved.push('voiceReview');
       }
-      // Migration: remove aiInsights (removed in v2.4.0)
-      const aiIdx = saved.indexOf('aiInsights' as WidgetId);
-      if (aiIdx >= 0) saved.splice(aiIdx, 1);
+      // Migration: add aiInsights if missing (new widget in v2.1.0)
+      if (!saved.includes('aiInsights')) {
+        const idx = saved.indexOf('quickActions');
+        if (idx >= 0) saved.splice(idx, 0, 'aiInsights');
+        else saved.push('aiInsights');
+      }
       // Migration: add medSchedule if missing (new widget in v2.2.0)
       if (!saved.includes('medSchedule')) {
         saved.push('medSchedule');
@@ -244,6 +248,9 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
 
       {/* ── Voice Review widget ──────────────────────────── */}
       {(show('voiceReview') || hasPendingVoiceReviews) && <ReviewQueue conditions={conditions} />}
+
+      {/* ── AI Insights widget ─────────────────────────────── */}
+      {show('aiInsights') && <AIInsightsCard />}
 
       {/* ── Meds tab ─────────────────────────────────────── */}
       {show('medSchedule') && (

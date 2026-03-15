@@ -33,6 +33,7 @@ export const DEFAULT_CONTENT: Record<string, string> = {
   'section.medSchedule': 'Meds Schedule',
   'section.healthForecast': 'Health Forecast',
   'section.dailyCheckin': 'Daily Check-in',
+  'section.aiInsights': 'AI Insights',
   'section.voiceReview': 'Pending Review',
 
   // Empty states
@@ -67,7 +68,7 @@ export const CONTENT_GROUPS: ContentGroup[] = [
   },
   {
     label: 'Section Headers',
-    keys: ['section.myConditions', 'section.recentLog', 'section.quickLog', 'section.medSchedule', 'section.healthForecast', 'section.dailyCheckin', 'section.voiceReview'],
+    keys: ['section.myConditions', 'section.recentLog', 'section.quickLog', 'section.medSchedule', 'section.healthForecast', 'section.dailyCheckin', 'section.aiInsights', 'section.voiceReview'],
   },
   {
     label: 'Empty States',

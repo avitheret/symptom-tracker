@@ -100,20 +100,21 @@ export interface DailyCheckIn {
 
 // ── Dashboard Widgets ───────────────────────────────────────────────────────
 
-export type WidgetId = 'stats' | 'forecast' | 'checkin' | 'voiceReview' | 'quickActions' | 'conditions' | 'recentLog' | 'medSchedule';
+export type WidgetId = 'stats' | 'forecast' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'medSchedule';
 
 export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string }> = {
   stats:        { label: 'Summary Stats',    description: 'Total entries, weekly count, average severity' },
   forecast:     { label: 'Health Forecast',  description: "Tomorrow's predicted symptom activity" },
   checkin:      { label: 'Daily Check-In',   description: "Today's wellness check-in status" },
   voiceReview:  { label: 'Voice Review',     description: 'Pending voice-logged entries awaiting review' },
+  aiInsights:   { label: 'AI Insights',      description: 'Disease-aware insights powered by Claude' },
   quickActions: { label: 'Quick Log',        description: 'Fast symptom logging by condition' },
   conditions:   { label: 'My Conditions',    description: 'Grid of all tracked conditions' },
   recentLog:    { label: 'Recent Entries',   description: 'Last 5 logged symptoms' },
   medSchedule:  { label: 'Meds Schedule',   description: 'Upcoming medication doses & reminders' },
 };
 
-export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'checkin', 'voiceReview', 'quickActions', 'conditions', 'recentLog', 'medSchedule'];
+export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentLog', 'medSchedule'];
 
 // ── Existing analytics types ─────────────────────────────────────────────────
 
@@ -323,3 +324,15 @@ export interface ContributingFactorsResult {
 
 // ── AI Insights ──────────────────────────────────────────────────────────────
 
+export type InsightSeverity = 'info' | 'warning' | 'urgent';
+export type InsightCategory = 'alert' | 'tip' | 'pattern' | 'medication';
+
+export interface AIInsight {
+  id: string;
+  patientId: string;
+  content: string;
+  category: InsightCategory;
+  severity: InsightSeverity;
+  generatedAt: number;
+  dismissed?: boolean;
+}
