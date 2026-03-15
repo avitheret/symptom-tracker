@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Settings, Sparkles, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity } from 'lucide-react';
+import { Plus, Settings, Sparkles, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import TrackingModal from './TrackingModal';
@@ -72,6 +72,63 @@ interface Props {
   onOpenMedication?: () => void;
   onOpenMedSchedule?: () => void;
   onEditMedSchedule?: (schedule: import('../types').MedicationSchedule) => void;
+}
+
+function RecentLogWidget({ entries, conditions, onSeeAll }: {
+  entries: import('../types').TrackingEntry[];
+  conditions: import('../types').Condition[];
+  onSeeAll: () => void;
+}) {
+  const [visibleCount, setVisibleCount] = useState(5);
+  const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
+  const visible = sorted.slice(0, visibleCount);
+  const hasMore = visibleCount < sorted.length;
+
+  return (
+    <section>
+      <SectionHeader
+        title="Recent Log"
+        action={{ label: 'See all →', onClick: onSeeAll }}
+      />
+      <Card padding={false}>
+        {visible.map((entry, idx) => {
+          const cond = conditions.find(c => c.id === entry.conditionId);
+          return (
+            <div
+              key={entry.id}
+              className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${idx < visible.length - 1 || hasMore ? 'border-b border-slate-50' : ''}`}
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: cond?.color ?? '#94a3b8' }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-900 truncate">
+                  {entry.symptomName}
+                  {entry.reviewStatus === 'to_review' && (
+                    <Badge variant="warning" className="ml-1.5 align-middle">Review</Badge>
+                  )}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {entry.conditionName} · {formatRelativeDate(entry.date)}
+                </p>
+              </div>
+              <SeverityBadge severity={entry.severity} />
+            </div>
+          );
+        })}
+        {hasMore && (
+          <button
+            onClick={() => setVisibleCount(c => c + 5)}
+            className="w-full flex items-center justify-center gap-1.5 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+          >
+            <ChevronDown size={14} />
+            Show more
+          </button>
+        )}
+      </Card>
+    </section>
+  );
 }
 
 export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenMedSchedule, onEditMedSchedule }: Props) {
@@ -354,43 +411,11 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
 
       {/* ── Recent Log widget ─────────────────────────────── */}
       {show('recentLog') && patientEntries.length > 0 && (
-        <section>
-          <SectionHeader
-            title="Recent Log"
-            action={{ label: 'See all →', onClick: () => setView('reports') }}
-          />
-          <Card padding={false}>
-            {[...patientEntries]
-              .sort((a, b) => b.createdAt - a.createdAt)
-              .slice(0, 5)
-              .map((entry, idx, arr) => {
-                const cond = conditions.find(c => c.id === entry.conditionId);
-                return (
-                  <div
-                    key={entry.id}
-                    className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${idx < arr.length - 1 ? 'border-b border-slate-50' : ''}`}
-                  >
-                    <span
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: cond?.color ?? '#94a3b8' }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">
-                        {entry.symptomName}
-                        {entry.reviewStatus === 'to_review' && (
-                          <Badge variant="warning" className="ml-1.5 align-middle">Review</Badge>
-                        )}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {entry.conditionName} · {formatRelativeDate(entry.date)}
-                      </p>
-                    </div>
-                    <SeverityBadge severity={entry.severity} />
-                  </div>
-                );
-              })}
-          </Card>
-        </section>
+        <RecentLogWidget
+          entries={patientEntries}
+          conditions={conditions}
+          onSeeAll={() => setView('reports')}
+        />
       )}
 
       {/* ── Empty-state stat cards (shown when no logs yet) ── */}
