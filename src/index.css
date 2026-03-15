@@ -1,0 +1,308 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE-FRIENDLY FONT SCALE OVERRIDE
+   Bumps Tailwind's default text sizes for better mobile readability.
+   • text-xs: 12px → 13px  (minimum readable caption)
+   • text-sm: 14px → 18px  (secondary / body text)
+   • text-base+: untouched (already at recommended 16px+)
+   ═══════════════════════════════════════════════════════════════ */
+
+@theme {
+  --text-xs: 0.8125rem;           /* 13px */
+  --text-xs--line-height: 1.125rem;  /* 18px */
+  --text-sm: 1.125rem;            /* 18px */
+  --text-sm--line-height: 1.625rem;  /* 26px */
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DESIGN SYSTEM TOKENS — SymptomTrack
+   Central reference for all design decisions.
+   Use these via var() in inline styles or as documentation.
+   Tailwind utility classes remain the implementation layer.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Brand — Tech Innovation ─────────────── */
+  --color-primary:         #2563eb;
+  --color-primary-hover:   #1d4ed8;
+  --color-primary-active:  #1e40af;
+  --color-primary-light:   #eff6ff;
+  --color-primary-text:    #1d4ed8;
+
+  /* ── Semantic Domain Colors ──────────────── */
+  /* Symptoms → red family */
+  --color-symptom:         #ef4444;
+  --color-symptom-light:   #fef2f2;
+  --color-symptom-border:  #fecaca;
+
+  /* Medications → blue family */
+  --color-medication:      #3b82f6;
+  --color-medication-light:#eff6ff;
+  --color-medication-border:#bfdbfe;
+
+  /* Triggers → amber/orange family */
+  --color-trigger:         #f59e0b;
+  --color-trigger-light:   #fffbeb;
+  --color-trigger-border:  #fde68a;
+
+  /* Check-ins → green family */
+  --color-checkin:         #22c55e;
+  --color-checkin-light:   #f0fdf4;
+  --color-checkin-border:  #bbf7d0;
+
+  /* Insights → violet family */
+  --color-insight:         #8b5cf6;
+  --color-insight-light:   #f5f3ff;
+  --color-insight-border:  #ddd6fe;
+
+  /* ── Status Colors ──────────────────────── */
+  --color-success:         #22c55e;
+  --color-success-light:   #f0fdf4;
+  --color-warning:         #f59e0b;
+  --color-warning-light:   #fffbeb;
+  --color-danger:          #ef4444;
+  --color-danger-light:    #fef2f2;
+
+  /* ── Neutral Palette ─────────────────────── */
+  --color-bg:              #f8fafc;
+  --color-surface:         #ffffff;
+  --color-surface-raised:  #f8fafc;
+  --color-border:          #f1f5f9;
+  --color-border-mid:      #e2e8f0;
+  --color-text-primary:    #0f172a;
+  --color-text-secondary:  #475569;
+  --color-text-muted:      #94a3b8;
+  --color-text-disabled:   #cbd5e1;
+
+  /* ── Layout ──────────────────────────────── */
+  --max-content-width:     640px;   /* Phone-focused content width  */
+  --screen-padding:        16px;    /* Horizontal screen padding     */
+  --section-gap:           24px;    /* Vertical gap between sections */
+  --card-padding:          16px;    /* Internal card padding         */
+
+  /* ── Spacing Scale (8px base) ────────────── */
+  --space-0:   0px;
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+  --space-16:  64px;
+
+  /* ── Border Radius ───────────────────────── */
+  --radius-xs:    6px;
+  --radius-sm:    8px;
+  --radius-md:    12px;
+  --radius-lg:    16px;
+  --radius-xl:    20px;
+  --radius-2xl:   24px;
+  --radius-sheet: 28px;   /* Top radius for bottom sheets */
+  --radius-full:  9999px;
+
+  /* ── Shadows ──────────────────────────────── */
+  --shadow-card:   0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-float:  0 4px 16px rgba(15,23,42,0.08), 0 1px 4px rgba(15,23,42,0.04);
+  --shadow-modal:  0 20px 60px rgba(15,23,42,0.14), 0 4px 16px rgba(15,23,42,0.06);
+  --shadow-fab:    0 8px 24px rgba(37,99,235,0.30);
+
+  /* ── Typography Scale ────────────────────── */
+  --text-h1:      28px;
+  --text-h2:      22px;
+  --text-h3:      18px;
+  --text-body:    16px;
+  --text-small:   18px;    /* bumped from 14px for mobile readability */
+  --text-caption: 13px;    /* bumped from 12px for mobile readability */
+  --text-micro:   12px;    /* bumped from 11px — 12px is the minimum */
+
+  /* ── Font Weights ────────────────────────── */
+  --weight-regular:   400;
+  --weight-medium:    500;
+  --weight-semibold:  600;
+  --weight-bold:      700;
+  --weight-black:     900;
+
+  /* ── Control / Touch Target Heights ─────── */
+  --control-xs:   32px;
+  --control-sm:   36px;
+  --control-md:   44px;   /* Minimum recommended touch target */
+  --control-lg:   52px;   /* Primary action buttons           */
+
+  /* ── Animation ───────────────────────────── */
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out:     cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out:  cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast:   120ms;
+  --duration-normal: 200ms;
+  --duration-slow:   320ms;
+
+  /* ── Z-Index Layers ──────────────────────── */
+  --z-dropdown:  30;
+  --z-sticky:    40;
+  --z-nav:       40;
+  --z-modal:     50;
+  --z-toast:     60;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BASE STYLES
+   ═══════════════════════════════════════════════════════════════ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--color-text-primary);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  /* Prevent text size adjustment on orientation change (iOS) */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SCROLLBARS
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Custom scrollbar (desktop) */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+/* Hide scrollbar utility — use class "scrollbar-none" */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Prevent layout shift from scrollbar on desktop */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FORM ELEMENTS — iOS ZOOM PREVENTION
+   iOS Safari auto-zooms the viewport when a form field with
+   font-size < 16px receives focus. Force all inputs to 16px.
+   ═══════════════════════════════════════════════════════════════ */
+
+input, textarea, select {
+  font-size: 16px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INTERACTION
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Remove tap highlight on interactive elements */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth scroll on iOS */
+.scroll-smooth {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SAFE AREA HELPERS
+   ═══════════════════════════════════════════════════════════════ */
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
+}
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHART OVERRIDES
+   ═══════════════════════════════════════════════════════════════ */
+
+.recharts-tooltip-wrapper {
+  outline: none !important;
+}
+
+/* Recharts text */
+.recharts-cartesian-axis-tick-value {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DESIGN SYSTEM UTILITIES
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Slider track enhancement */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: var(--radius-full);
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.3);
+  transition: transform var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PRINT STYLES (Doctor Report)
+   ═══════════════════════════════════════════════════════════════ */
+
+@media print {
+  header, footer, nav, .no-print, button { display: none !important; }
+  body { background: white; font-family: Georgia, serif; font-size: 11pt; color: #000; }
+  #doctor-report { display: block !important; padding: 0.5in 0.75in; }
+  #doctor-report h1 { font-size: 18pt; border-bottom: 2px solid #000; padding-bottom: 6pt; }
+  #doctor-report h2 { font-size: 13pt; border-bottom: 1px solid #ccc; margin-top: 20pt; }
+  #doctor-report table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  #doctor-report th, #doctor-report td { border: 1px solid #999; padding: 5pt 8pt; }
+  #doctor-report th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #doctor-report .disclaimer { border: 1pt solid #000; padding: 8pt; margin-top: 24pt; font-size: 9pt; font-style: italic; }
+}

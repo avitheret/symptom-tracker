@@ -1,0 +1,346 @@
+import { useState, useEffect, useCallback } from 'react';
+import { AppProvider, useApp } from './contexts/AppContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Header from './components/Header';
+import BottomNav from './components/BottomNav';
+import Dashboard from './components/Dashboard';
+import ConditionsList from './components/ConditionsList';
+import Reports from './components/Reports';
+import Insights from './components/Insights';
+import PatientManager from './components/PatientManager';
+import Footer from './components/Footer';
+import AuthModal from './components/AuthModal';
+import UserProfile from './components/UserProfile';
+import AddPatientModal from './components/AddPatientModal';
+import CheckInModal from './components/CheckInModal';
+import TriggerModal from './components/TriggerModal';
+import MedicationModal from './components/MedicationModal';
+import TrackingModal from './components/TrackingModal';
+import VoiceButton from './components/VoiceButton';
+import QuickAddFAB from './components/QuickAddFAB';
+import QuickLogSheet from './components/QuickLogSheet';
+import VoiceCommandToast from './components/VoiceCommandToast';
+import Onboarding, { isOnboardingDone } from './components/Onboarding';
+import Notes from './components/Notes';
+import NoteComposer from './components/NoteComposer';
+import ExtractionReviewSheet from './components/ExtractionReviewSheet';
+import MedScheduleModal from './components/MedScheduleModal';
+import AdminPanel from './components/AdminPanel';
+import { useVoiceCommands, type VoiceCommand, type SymptomPrefill } from './hooks/useVoiceCommands';
+import { useNotificationScheduler } from './hooks/useNotificationScheduler';
+import { useMedScheduleSync } from './hooks/useMedScheduleSync';
+import { extractFromNote } from './utils/noteExtractor';
+import type { Condition, Symptom, ExtractionResult, Note, MedicationSchedule } from './types';
+
+// ─── Fuzzy condition / symptom matching ──────────────────────────────────────
+// Priority: exact → starts-with → hint-starts-with-item → any-contains.
+function fuzzyMatch<T extends { name: string }>(items: T[], hint: string): T | undefined {
+  const h = hint.toLowerCase().trim();
+  if (h.length < 2) return undefined;
+  return (
+    items.find(i => i.name.toLowerCase() === h) ??
+    items.find(i => i.name.toLowerCase().startsWith(h)) ??
+    items.find(i => h.startsWith(i.name.toLowerCase()) && i.name.length >= 3) ??
+    items.find(i => i.name.toLowerCase().includes(h) || h.includes(i.name.toLowerCase()))
+  );
+}
+
+function AppContent() {
+  const { state, setView, getPatientConditions, confirmNoteExtraction, updateNoteExtraction, addEntry } = useApp();
+  const { isAuthenticated, needsOnboarding, isLoading } = useAuth();
+  const [showAuth, setShowAuth] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showAddPatient, setShowAddPatient] = useState(false);
+  const [showCheckIn, setShowCheckIn] = useState(false);
+  const [showTrigger, setShowTrigger] = useState(false);
+  const [showMedication, setShowMedication] = useState(false);
+  const [showQuickLog, setShowQuickLog] = useState(false);
+  const [quickLogNoteRef, setQuickLogNoteRef] = useState<string | undefined>();
+  const [showNoteComposer, setShowNoteComposer] = useState(false);
+  const [noteComposerAutoStart, setNoteComposerAutoStart] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => !isOnboardingDone());
+  const [extractionPending, setExtractionPending] = useState<ExtractionResult | null>(null);
+  const [showMedSchedule, setShowMedSchedule] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<MedicationSchedule | undefined>();
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastLabel, setToastLabel] = useState('');
+  // When a full inline voice command matches (e.g. "log dizziness to migraine"),
+  // open TrackingModal directly — bypassing the condition picker.
+  const [voiceTrackTarget, setVoiceTrackTarget] =
+    useState<{ condition: Condition; symptom?: Symptom; transcript?: string } | null>(null);
+
+  // Auto-open auth modal if user needs to complete onboarding (e.g. after page reload)
+  useEffect(() => {
+    if (isAuthenticated && needsOnboarding) {
+      setShowAuth(true);
+    }
+  }, [isAuthenticated, needsOnboarding]);
+
+  // ── Voice command handler ─────────────────────────────────────────────────
+  const handleVoiceCommand = useCallback((
+    command: VoiceCommand,
+    label: string,
+    prefill?: SymptomPrefill,
+  ) => {
+    setToastLabel(label);
+    setToastVisible(false);
+    setTimeout(() => setToastVisible(true), 50);
+
+    setShowCheckIn(false);
+    setShowTrigger(false);
+    setShowMedication(false);
+
+    switch (command) {
+      case 'LOG_SYMPTOM': {
+        if (prefill) {
+          // Try to resolve spoken names against the user's actual data
+          const conditions = getPatientConditions(state.activePatientId ?? '');
+          const condition  = fuzzyMatch(conditions, prefill.conditionHint);
+          if (condition) {
+            const symptom = fuzzyMatch(condition.symptoms, prefill.symptomName);
+            if (symptom) {
+              // ── AUTO-LOG: both condition and symptom matched ──
+              const now = new Date();
+              const severity = prefill.severity ?? 5;
+              addEntry({
+                conditionId:   condition.id,
+                conditionName: condition.name,
+                symptomId:     symptom.id,
+                symptomName:   symptom.name,
+                date:          now.toISOString().slice(0, 10),
+                time:          `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+                severity,
+                notes:            'Voice logged · pending review',
+                reviewStatus:     'to_review',
+                sourceType:       'voice',
+                sourceTranscript: label,
+              });
+              // Show confirmation toast (reuse existing toast state)
+              setToastLabel(`Logged ${symptom.name} \u2192 ${condition.name}. Pending review.`);
+              setToastVisible(false);
+              setTimeout(() => setToastVisible(true), 50);
+              break;
+            }
+            // Symptom not matched → fall back to TrackingModal with condition pre-selected
+            setVoiceTrackTarget({ condition, symptom: undefined, transcript: label });
+            break;
+          }
+        }
+        // Fallback: no prefill or condition not found — open QuickLogSheet
+        setVoiceTrackTarget(null);
+        setShowQuickLog(true);
+        break;
+      }
+      case 'CHECK_IN':
+        setShowCheckIn(true);
+        break;
+      case 'LOG_TRIGGER':
+        setShowTrigger(true);
+        break;
+      case 'LOG_MEDICATION':
+        setShowMedication(true);
+        break;
+      case 'OPEN_REPORTS':
+        setView('reports');
+        break;
+      case 'OPEN_INSIGHTS':
+        setView('insights');
+        break;
+      case 'OPEN_HOME':
+        setView('dashboard');
+        break;
+      case 'OPEN_LOG':
+        setView('reports');
+        break;
+      case 'OPEN_CONDITIONS':
+        setView('conditions');
+        break;
+      case 'OPEN_NOTES':
+        setView('notes');
+        break;
+      case 'ADD_NOTE':
+        disableWakeWord();  // Stop wake listener NOW so Chrome releases the mic
+        setNoteComposerAutoStart(true);
+        setShowNoteComposer(true);
+        break;
+      case 'CANCEL':
+        break;
+    }
+  }, [setView, getPatientConditions, state.activePatientId, addEntry]);
+
+  const { state: voiceState, manualActivate, disableWakeWord, enableWakeWord } = useVoiceCommands({
+    onCommand: handleVoiceCommand,
+  });
+
+  // ── Medication notification scheduler ─────────────────────────────────────
+  useNotificationScheduler();
+
+  // ── Sync medication schedules to Supabase (for push notifications) ──────
+  useMedScheduleSync();
+
+  // ── Note extraction handlers ────────────────────────────────────────────────
+  const runExtraction = useCallback((noteId: string, noteText: string, date?: Date) => {
+    const patientId = state.activePatientId;
+    if (!patientId) return;
+    const conditions = getPatientConditions(patientId);
+    const result = extractFromNote(noteId, noteText, conditions, date ?? new Date());
+    if (result.hasItems) {
+      updateNoteExtraction(noteId, { extractionStatus: 'pending' });
+      setExtractionPending(result);
+    }
+  }, [state.activePatientId, getPatientConditions, updateNoteExtraction]);
+
+  const handleExtractFromNote = useCallback((note: Note) => {
+    runExtraction(note.id, note.text, new Date(note.createdAt));
+  }, [runExtraction]);
+
+  const handleConfirmExtraction = useCallback((result: ExtractionResult) => {
+    confirmNoteExtraction(result);
+    setExtractionPending(null);
+  }, [confirmNoteExtraction]);
+
+  const handleSkipExtraction = useCallback((noteId: string) => {
+    updateNoteExtraction(noteId, { extractionStatus: 'skipped' });
+    setExtractionPending(null);
+  }, [updateNoteExtraction]);
+
+  // In cloud mode, wait until session is restored to avoid a flash of
+  // unauthenticated UI while Supabase confirms an existing session.
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+          <p className="text-sm text-slate-400">Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <Header
+        onOpenAuth={() => setShowAuth(true)}
+        onOpenProfile={() => setShowProfile(true)}
+        onOpenAddPatient={() => setShowAddPatient(true)}
+      />
+
+      {/* Main content — pb-20 on mobile for bottom nav clearance */}
+      <main className="flex-1 pb-20 lg:pb-0">
+        {state.view === 'dashboard' && (
+          <Dashboard
+            onOpenCheckIn={() => setShowCheckIn(true)}
+            onOpenTrigger={() => setShowTrigger(true)}
+            onOpenMedication={() => setShowMedication(true)}
+            onOpenMedSchedule={() => { setEditingSchedule(undefined); setShowMedSchedule(true); }}
+            onEditMedSchedule={(s) => { setEditingSchedule(s); setShowMedSchedule(true); }}
+          />
+        )}
+        {state.view === 'conditions' && <ConditionsList />}
+        {state.view === 'reports' && (
+          <Reports />
+        )}
+        {state.view === 'insights' && <Insights />}
+        {state.view === 'patients' && <PatientManager />}
+        {state.view === 'notes' && (
+          <Notes
+            onNewNote={() => { setNoteComposerAutoStart(false); setShowNoteComposer(true); }}
+            onLogFromNote={text => { setQuickLogNoteRef(text); setShowQuickLog(true); }}
+            onExtractFromNote={handleExtractFromNote}
+          />
+        )}
+        {state.view === 'admin' && <AdminPanel />}
+      </main>
+
+      {/* Footer: shown only on desktop (lg+) — mobile has BottomNav */}
+      <div className="hidden lg:block">
+        <Footer />
+      </div>
+
+      {/* Quick Add FAB */}
+      <QuickAddFAB
+        onCheckIn={() => setShowCheckIn(true)}
+        onTrigger={() => setShowTrigger(true)}
+        onMedication={() => setShowMedication(true)}
+        onLogSymptom={() => setShowQuickLog(true)}
+        onNote={() => { setNoteComposerAutoStart(false); setShowNoteComposer(true); }}
+      />
+
+      {/* Mobile bottom navigation */}
+      <BottomNav />
+
+      {/* ── Voice UI ── */}
+      <VoiceButton
+        state={voiceState}
+        onPress={manualActivate}
+        onLongPress={disableWakeWord}
+      />
+      <VoiceCommandToast label={toastLabel} visible={toastVisible} />
+
+      {/* Global modals */}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+      {showProfile && <UserProfile onClose={() => setShowProfile(false)} />}
+      {showAddPatient && <AddPatientModal onClose={() => setShowAddPatient(false)} />}
+      {showCheckIn && <CheckInModal onClose={() => setShowCheckIn(false)} />}
+      {showTrigger && <TriggerModal onClose={() => setShowTrigger(false)} />}
+      {showMedication && <MedicationModal onClose={() => setShowMedication(false)} />}
+      {showQuickLog && (
+        <QuickLogSheet
+          referenceNote={quickLogNoteRef}
+          onClose={() => { setShowQuickLog(false); setQuickLogNoteRef(undefined); }}
+        />
+      )}
+      {showNoteComposer && (
+        <NoteComposer
+          autoStartDictation={noteComposerAutoStart}
+          onDictationStart={disableWakeWord}
+          onDictationEnd={enableWakeWord}
+          onNoteSaved={runExtraction}
+          onClose={() => { setShowNoteComposer(false); setNoteComposerAutoStart(false); enableWakeWord(); }}
+        />
+      )}
+      {/* Direct voice-log: skips condition picker when inline command matched */}
+      {voiceTrackTarget && (
+        <TrackingModal
+          condition={voiceTrackTarget.condition}
+          preselectedSymptom={voiceTrackTarget.symptom}
+          voiceSourceTranscript={voiceTrackTarget.transcript}
+          onClose={() => setVoiceTrackTarget(null)}
+        />
+      )}
+
+      {/* Extraction review — shown after saving a note with extractable data */}
+      {extractionPending && (
+        <ExtractionReviewSheet
+          result={extractionPending}
+          onConfirm={handleConfirmExtraction}
+          onSkip={handleSkipExtraction}
+          onClose={() => setExtractionPending(null)}
+        />
+      )}
+
+      {/* Medication schedule modal */}
+      {showMedSchedule && (
+        <MedScheduleModal
+          editSchedule={editingSchedule}
+          onClose={() => { setShowMedSchedule(false); setEditingSchedule(undefined); }}
+        />
+      )}
+
+      {/* Onboarding — first-run only */}
+      {showOnboarding && (
+        <Onboarding onDone={() => setShowOnboarding(false)} />
+      )}
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </AuthProvider>
+  );
+}
