@@ -7,6 +7,7 @@ import AddConditionModal from './AddConditionModal';
 import ConditionCard from './ConditionCard';
 import ForecastCard from './ForecastCard';
 import WeatherCard from './WeatherCard';
+import DailyExplainerCard from './DailyExplainerCard';
 import ReviewQueue from './ReviewQueue';
 import AIInsightsCard from './AIInsightsCard';
 import MedicationTab from './MedicationTab';
@@ -15,7 +16,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId } from '../types';
 import { DEFAULT_WIDGETS } from '../types';
 
-const APP_VERSION = 'v2.7.0';
+const APP_VERSION = 'v2.8.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -45,6 +46,12 @@ function loadPrefs(): WidgetId[] {
         const forecastIdx = saved.indexOf('forecast');
         if (forecastIdx >= 0) saved.splice(forecastIdx + 1, 0, 'weather');
         else saved.unshift('weather');
+      }
+      // Migration: add explainToday if missing (new widget in v2.8.0)
+      if (!saved.includes('explainToday')) {
+        const forecastIdx = saved.indexOf('forecast');
+        if (forecastIdx >= 0) saved.splice(forecastIdx + 1, 0, 'explainToday');
+        else saved.unshift('explainToday');
       }
       localStorage.setItem(PREFS_KEY, JSON.stringify(saved));
       return saved;
@@ -250,6 +257,9 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
 
       {/* ── Forecast widget ───────────────────────────────── */}
       {show('forecast') && <ForecastCard />}
+
+      {/* ── Daily Explainer widget ────────────────────────── */}
+      {show('explainToday') && <DailyExplainerCard />}
 
       {/* ── Weather widget ────────────────────────────────── */}
       {show('weather') && <WeatherCard />}

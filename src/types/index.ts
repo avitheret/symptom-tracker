@@ -101,11 +101,12 @@ export interface DailyCheckIn {
 
 // ── Dashboard Widgets ───────────────────────────────────────────────────────
 
-export type WidgetId = 'stats' | 'forecast' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'medSchedule' | 'weather';
+export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'medSchedule' | 'weather';
 
 export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string }> = {
   stats:        { label: 'Summary Stats',    description: 'Total entries, weekly count, average severity' },
   forecast:     { label: 'Health Forecast',  description: "Tomorrow's predicted symptom activity" },
+  explainToday: { label: 'Daily Explainer',  description: '"Why am I feeling like this?" — AI analysis of today\'s triggers' },
   checkin:      { label: 'Daily Check-In',   description: "Today's wellness check-in status" },
   voiceReview:  { label: 'Voice Review',     description: 'Pending voice-logged entries awaiting review' },
   aiInsights:   { label: 'AI Insights',      description: 'Disease-aware insights powered by Claude' },
@@ -116,7 +117,7 @@ export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string 
   weather:      { label: 'Weather Tracker', description: 'Auto-track pressure, humidity, storms — migraine triggers' },
 };
 
-export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentLog', 'medSchedule'];
+export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentLog', 'medSchedule'];
 
 // ── Existing analytics types ─────────────────────────────────────────────────
 
