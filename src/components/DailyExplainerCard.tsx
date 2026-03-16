@@ -6,26 +6,19 @@ import { useState, useCallback } from 'react';
 import { Sparkles, Loader2, RefreshCw, ChevronDown, ChevronUp, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { explainToday, getCachedExplanation, type DailyExplanation } from '../utils/dailyExplainer';
-
-function hexToRgba(hex: string, alpha: number) {
-  if (!hex || hex.length < 7) return `rgba(99,102,241,${alpha})`;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+import { hexToRgba } from '../utils/colorUtils';
 
 export default function DailyExplainerCard() {
   const { state, getActivePatient, getPatientConditions } = useApp();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [result, setResult]   = useState<DailyExplanation | null>(() => getCachedExplanation(today));
+  const activePatient = getActivePatient();
+  const conditions    = activePatient ? getPatientConditions(activePatient.id) : [];
+
+  const [result, setResult]   = useState<DailyExplanation | null>(() => getCachedExplanation(today, activePatient?.id));
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
-
-  const activePatient = getActivePatient();
-  const conditions    = activePatient ? getPatientConditions(activePatient.id) : [];
 
   const patientEntries    = state.entries.filter(e => e.patientId === state.activePatientId);
   const patientCheckIns   = state.checkIns.filter(c => c.patientId === state.activePatientId);
@@ -38,6 +31,7 @@ export default function DailyExplainerCard() {
     setError(null);
     try {
       const explanation = await explainToday({
+        patientId:   activePatient.id,
         patientName: activePatient.name,
         diagnosis:   activePatient.diagnosis ?? '',
         conditions,

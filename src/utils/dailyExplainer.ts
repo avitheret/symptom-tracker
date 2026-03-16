@@ -4,6 +4,7 @@
  */
 import type { TrackingEntry, DailyCheckIn, TriggerLog, MedicationLog, Condition } from '../types';
 import { getObservationsForDate, getLatestObservation } from './weatherService';
+import { daysAgoStr } from './analytics';
 
 // ── Output types ──────────────────────────────────────────────────────────────
 
@@ -25,11 +26,16 @@ export interface DailyExplanation {
 
 // ── localStorage cache (one per day) ──────────────────────────────────────────
 
-const CACHE_KEY = 'st-daily-explanation';
+const CACHE_PREFIX = 'st-daily-explanation';
 
-export function getCachedExplanation(date: string): DailyExplanation | null {
+function cacheKey(patientId: string): string {
+  return `${CACHE_PREFIX}-${patientId}`;
+}
+
+export function getCachedExplanation(date: string, patientId?: string): DailyExplanation | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const key = patientId ? cacheKey(patientId) : CACHE_PREFIX;
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const cached: DailyExplanation = JSON.parse(raw);
     return cached.date === date ? cached : null;
@@ -38,21 +44,11 @@ export function getCachedExplanation(date: string): DailyExplanation | null {
   }
 }
 
-function cacheExplanation(exp: DailyExplanation): void {
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(exp)); } catch { /* quota */ }
+function cacheExplanation(exp: DailyExplanation, patientId: string): void {
+  try { localStorage.setItem(cacheKey(patientId), JSON.stringify(exp)); } catch { /* quota */ }
 }
 
 // ── Build context for today ───────────────────────────────────────────────────
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function yesterdayStr(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
 
 function formatCheckIn(ci: DailyCheckIn | undefined, label: string): string {
   if (!ci) return `${label}: no check-in recorded`;
@@ -151,7 +147,7 @@ RECENT CONTEXT: ${recentContext}
 
 ${todayEntries.length === 0
   ? 'No symptoms were logged today. Provide a brief positive note.'
-  : `Explain the likely causes for today's ${todayEntries.map(e => e.conditionName).filter((v,i,a)=>a.indexOf(v)===i).join(' and ')} symptoms.`
+  : `Explain the likely causes for today's ${[...new Set(todayEntries.map(e => e.conditionName))].join(' and ')} symptoms.`
 }
 
 Respond with ONLY valid JSON in this exact format:
@@ -171,6 +167,7 @@ Respond with ONLY valid JSON in this exact format:
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function explainToday(params: {
+  patientId: string;
   patientName: string;
   diagnosis: string;
   conditions: Condition[];
@@ -180,12 +177,12 @@ export async function explainToday(params: {
   medicationLogs: MedicationLog[];
   forceRefresh?: boolean;
 }): Promise<DailyExplanation> {
-  const today = todayStr();
-  const yesterday = yesterdayStr();
+  const today = daysAgoStr(0);
+  const yesterday = daysAgoStr(1);
 
   // Return cached if available and not forcing refresh
   if (!params.forceRefresh) {
-    const cached = getCachedExplanation(today);
+    const cached = getCachedExplanation(today, params.patientId);
     if (cached) return cached;
   }
 
@@ -252,6 +249,6 @@ export async function explainToday(params: {
     dataNote: parsed.dataNote,
   };
 
-  cacheExplanation(result);
+  cacheExplanation(result, params.patientId);
   return result;
 }

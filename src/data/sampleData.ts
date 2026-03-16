@@ -1,17 +1,12 @@
 import type { DailyCheckIn, MedicationLog, TrackingEntry, TriggerLog } from '../types';
 import type { EffectivenessRating } from '../types';
+import { daysAgoStr } from '../utils/analytics';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function dayOfWeek(dateStr: string) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return DAYS[new Date(y, m - 1, d).getDay()];
-}
-
-function daysAgoStr(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
 }
 
 function rnd(min: number, max: number) {

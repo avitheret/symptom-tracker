@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, X, AlertTriangle } from 'lucide-react';
 import type { Condition } from '../types';
+import { hexToRgba } from '../utils/colorUtils';
 
 interface Props {
   condition: Condition;
@@ -9,14 +10,6 @@ interface Props {
   onLog: () => void;
   onClick: () => void;
   onRemove?: () => void;
-}
-
-/** Returns hex color with given opacity as rgba */
-function hexToRgba(hex: string, alpha: number) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 export default function ConditionCard({ condition, entryCount, lastEntryDate, onLog, onClick, onRemove }: Props) {
