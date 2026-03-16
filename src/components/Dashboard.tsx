@@ -16,7 +16,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId } from '../types';
 import { DEFAULT_WIDGETS } from '../types';
 
-const APP_VERSION = 'v2.8.0';
+const APP_VERSION = 'v2.9.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -146,7 +146,7 @@ function RecentLogWidget({ entries, conditions, onSeeAll }: {
 }
 
 export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenMedSchedule, onEditMedSchedule }: Props) {
-  const { state, setView, selectCondition, loadSampleData, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient } = useApp();
+  const { state, setView, selectCondition, loadSampleData, injectTodayDemoEntries, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient } = useApp();
   const { user } = useAuth();
   const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
   const [showAddCondition,     setShowAddCondition]     = useState(false);
@@ -185,10 +185,21 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  // Auto-load demo data when there are no entries
+  // Auto-load demo data when there are no entries; top-up today's entries daily
   useEffect(() => {
-    if (totalEntries === 0 && state.activePatientId) {
+    if (!state.activePatientId) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (totalEntries === 0) {
       loadSampleData();
+      // loadSampleData dispatches BULK_ADD_ENTRIES which will re-render;
+      // injectTodayDemoEntries runs after so today always has fresh data
+      setTimeout(() => injectTodayDemoEntries(), 50);
+    } else {
+      // Already have data — check if we need today's top-up
+      const lastInject = localStorage.getItem('st-demo-last-inject');
+      if (lastInject !== today) {
+        injectTodayDemoEntries();
+      }
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 

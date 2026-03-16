@@ -306,3 +306,81 @@ export function generateSampleData(patientId: string): TrackingEntry[] {
 
   return entries.sort((a, b) => b.createdAt - a.createdAt);
 }
+
+// ── Daily demo top-up (for testing "Explain today") ───────────────────────────
+// Generates ~20 realistic entries for today spread across all 5 conditions.
+// Call this once per day to keep today's data fresh for the Daily Explainer.
+
+const DAILY_DEMO_NOTES = [
+  'Came on suddenly', 'Worse after screen time', 'Mild but persistent',
+  'Worse in the morning', 'Improved after rest', 'After a stressful meeting',
+  '', '', '', '',  // blanks for variety
+];
+
+export function generateTodayDemoEntries(patientId: string): TrackingEntry[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const entries: TrackingEntry[] = [];
+  let counter = Date.now();
+
+  function makeToday(
+    pool: (typeof SAMPLE_POOLS)[number],
+    symptomIdx: number,
+    hour: number,
+    minute: number,
+    severity: number,
+  ): TrackingEntry {
+    const symptom = pool.symptoms[symptomIdx % pool.symptoms.length];
+    const note = DAILY_DEMO_NOTES[rnd(0, DAILY_DEMO_NOTES.length - 1)];
+    counter++;
+    return {
+      id: `demo-today-${counter}-${Math.random().toString(36).slice(2, 6)}`,
+      patientId,
+      conditionId:   pool.conditionId,
+      conditionName: pool.conditionName,
+      symptomId:     symptom.id,
+      symptomName:   symptom.name,
+      date:          today,
+      dayOfWeek:     dayOfWeek(today),
+      time:          padTime(hour, minute),
+      severity,
+      notes:         note,
+      createdAt:     new Date(`${today}T${padTime(hour, minute)}:00`).getTime(),
+    };
+  }
+
+  const [migraine, anxiety, arthritis, ibs, diabetes] = SAMPLE_POOLS;
+
+  // Morning cluster: anxiety + arthritis stiffness
+  entries.push(makeToday(anxiety,   0, 7, rnd( 0, 20), rnd(5, 8)));  // worry
+  entries.push(makeToday(anxiety,   1, 7, rnd(25, 45), rnd(4, 7)));  // racing heart
+  entries.push(makeToday(arthritis, 2, 7, rnd(30, 55), rnd(4, 7)));  // morning stiffness
+  entries.push(makeToday(arthritis, 1, 8, rnd( 0, 20), rnd(3, 6)));  // joint stiffness
+
+  // Mid-morning: IBS
+  entries.push(makeToday(ibs, 0, 10, rnd( 0, 20), rnd(4, 7)));  // abdominal pain
+  entries.push(makeToday(ibs, 1, 10, rnd(25, 50), rnd(3, 6)));  // bloating
+  entries.push(makeToday(ibs, 2, 11, rnd( 0, 30), rnd(3, 5)));  // cramping
+
+  // Afternoon: migraine building
+  entries.push(makeToday(migraine, 2, 13, rnd( 0, 20), rnd(4, 6)));  // light sensitivity
+  entries.push(makeToday(migraine, 3, 13, rnd(25, 45), rnd(3, 6)));  // sound sensitivity
+  entries.push(makeToday(diabetes, 1, 14, rnd( 0, 30), rnd(4, 7)));  // fatigue
+  entries.push(makeToday(diabetes, 3, 14, rnd(30, 59), rnd(3, 6)));  // tingling
+
+  // Evening: migraine peak
+  entries.push(makeToday(migraine, 0, 17, rnd( 0, 15), rnd(7, 9)));  // throbbing headache
+  entries.push(makeToday(migraine, 1, 17, rnd(20, 45), rnd(6, 8)));  // nausea
+  entries.push(makeToday(migraine, 2, 18, rnd( 0, 20), rnd(6, 8)));  // light sensitivity
+  entries.push(makeToday(anxiety,  3, 18, rnd(30, 59), rnd(4, 7)));  // sleep disturbance
+
+  // Late evening scatter
+  entries.push(makeToday(arthritis, 0, 19, rnd( 0, 30), rnd(4, 7)));  // joint pain
+  entries.push(makeToday(arthritis, 3, 19, rnd(30, 59), rnd(3, 6)));  // fatigue
+  entries.push(makeToday(ibs,       3, 20, rnd( 0, 30), rnd(3, 5)));  // gas
+  entries.push(makeToday(diabetes,  0, 20, rnd(30, 59), rnd(3, 5)));  // increased thirst
+  entries.push(makeToday(migraine,  3, 21, rnd( 0, 30), rnd(5, 7)));  // sound sensitivity
+
+  return entries.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export const DEMO_INJECT_KEY = 'st-demo-last-inject';

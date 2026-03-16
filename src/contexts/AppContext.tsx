@@ -9,7 +9,7 @@ import type {
 import { computeDoseTimes } from '../utils/notifications';
 import { logActivity, ACTIONS } from '../utils/activityLogger';
 import { PREDEFINED_CONDITIONS } from '../data/medicalData';
-import { generateSampleData, generateSampleTriggerLogs, generateSampleCheckIns, generateSampleMedicationLogs } from '../data/sampleData';
+import { generateSampleData, generateSampleTriggerLogs, generateSampleCheckIns, generateSampleMedicationLogs, generateTodayDemoEntries, DEMO_INJECT_KEY } from '../data/sampleData';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -508,6 +508,7 @@ interface ContextValue {
   getActivePatient: () => Patient | undefined;
   getPatientConditions: (patientId: string) => Condition[];
   loadSampleData: () => void;
+  injectTodayDemoEntries: () => void;
   syncWithCloud: () => Promise<void>;
   loadFromCloud: () => Promise<void>;
 }
@@ -930,6 +931,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'BULK_ADD_MEDICATION_LOGS', logs: generateSampleMedicationLogs(patientId) });
   }, [state.activePatientId]);
 
+  const injectTodayDemoEntries = useCallback(() => {
+    const patientId = state.activePatientId;
+    if (!patientId) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const entries = generateTodayDemoEntries(patientId);
+    dispatch({ type: 'BULK_ADD_ENTRIES', entries });
+    localStorage.setItem(DEMO_INJECT_KEY, today);
+  }, [state.activePatientId]);
+
   const syncWithCloud = useCallback(async () => {
     await new Promise(r => setTimeout(r, 800));
   }, []);
@@ -978,6 +988,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getActivePatient,
         getPatientConditions,
         loadSampleData,
+        injectTodayDemoEntries,
         syncWithCloud,
         loadFromCloud,
       }}
