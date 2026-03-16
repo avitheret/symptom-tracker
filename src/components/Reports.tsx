@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Trash2, Download, BarChart2, List, TrendingUp, Stethoscope, GitMerge, Pill, Zap, Brain } from 'lucide-react';
+import { Trash2, Download, BarChart2, List, TrendingUp, Stethoscope, GitMerge, Pill, Zap, Brain, Cloud } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -9,6 +9,7 @@ import DoctorReport from './DoctorReport';
 import CorrelationCharts from './CorrelationCharts';
 import MedicationTab from './MedicationTab';
 import RootCauseCard from './RootCauseCard';
+import WeatherReportSection from './WeatherReportSection';
 import TrackingModal from './TrackingModal';
 import SwipeableRow from './SwipeableRow';
 import { Button, Card, Chip, TabBar, SectionHeader, EmptyState, Badge } from './ui';
@@ -17,7 +18,7 @@ import type { TrackingEntry } from '../types';
 
 type Range     = '7d' | '30d' | '90d' | 'all';
 type ChartType = 'line' | 'bar';
-type ReportTab = 'chart' | 'log' | 'triggers' | 'rootCauses' | 'medications' | 'correlations' | 'doctor';
+type ReportTab = 'chart' | 'log' | 'triggers' | 'rootCauses' | 'weather' | 'medications' | 'correlations' | 'doctor';
 
 const RANGE_OPTIONS: Array<{ id: Range; label: string }> = [
   { id: '7d',  label: '7 Days'   },
@@ -31,6 +32,7 @@ const REPORT_TABS: TabItem<ReportTab>[] = [
   { id: 'log',          label: 'Log',          icon: <List        size={14} /> },
   { id: 'triggers',     label: 'Triggers',     icon: <Zap         size={14} /> },
   { id: 'rootCauses',   label: 'Root Causes',  icon: <Brain       size={14} /> },
+  { id: 'weather',      label: 'Weather',      icon: <Cloud       size={14} /> },
   { id: 'medications',  label: 'Meds',         icon: <Pill        size={14} /> },
   { id: 'correlations', label: 'Correlations', icon: <GitMerge    size={14} /> },
   { id: 'doctor',       label: 'Doctor',       icon: <Stethoscope size={14} /> },
@@ -546,6 +548,14 @@ export default function Reports() {
           conditionId={filterConditionId || undefined}
           dateFrom={cutoff || undefined}
           dateTo={undefined}
+        />
+      )}
+
+      {/* ── Weather tab ───────────────────────────────────── */}
+      {tab === 'weather' && (
+        <WeatherReportSection
+          entries={patientEntries}
+          dateFrom={cutoff || undefined}
         />
       )}
 

@@ -4,12 +4,16 @@ import { useApp } from '../contexts/AppContext';
 import { generateForecast } from '../utils/analytics';
 
 const BASIS_LABELS: Record<string, string> = {
-  'day-of-week': 'Weekly pattern',
-  'recent-trend': 'Rising trend',
+  'day-of-week':     'Weekly pattern',
+  'recent-trend':    'Rising trend',
   'cluster-density': 'High activity',
-  'poor-sleep': 'Poor sleep',
-  'high-stress': 'High stress',
+  'poor-sleep':      'Poor sleep',
+  'high-stress':     'High stress',
   'recent-triggers': 'Recent triggers',
+  'pressure-drop':   '🌀 Pressure drop',
+  'storm':           '⛈ Storm detected',
+  'high-humidity':   '💧 High humidity',
+  'temp-swing':      '🌡 Temp swing',
 };
 
 const CONFIDENCE_STYLES = {

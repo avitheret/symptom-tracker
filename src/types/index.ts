@@ -101,7 +101,7 @@ export interface DailyCheckIn {
 
 // ── Dashboard Widgets ───────────────────────────────────────────────────────
 
-export type WidgetId = 'stats' | 'forecast' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'medSchedule';
+export type WidgetId = 'stats' | 'forecast' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'medSchedule' | 'weather';
 
 export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string }> = {
   stats:        { label: 'Summary Stats',    description: 'Total entries, weekly count, average severity' },
@@ -113,9 +113,10 @@ export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string 
   conditions:   { label: 'My Conditions',    description: 'Grid of all tracked conditions' },
   recentLog:    { label: 'Recent Entries',   description: 'Last 5 logged symptoms' },
   medSchedule:  { label: 'Meds Schedule',   description: 'Upcoming medication doses & reminders' },
+  weather:      { label: 'Weather Tracker', description: 'Auto-track pressure, humidity, storms — migraine triggers' },
 };
 
-export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentLog', 'medSchedule'];
+export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentLog', 'medSchedule'];
 
 // ── Existing analytics types ─────────────────────────────────────────────────
 
@@ -226,7 +227,7 @@ export interface TrendResult {
 export interface ForecastResult {
   prediction: string;
   confidence: Confidence;
-  basis: Array<'day-of-week' | 'recent-trend' | 'cluster-density' | 'poor-sleep' | 'high-stress' | 'recent-triggers'>;
+  basis: Array<'day-of-week' | 'recent-trend' | 'cluster-density' | 'poor-sleep' | 'high-stress' | 'recent-triggers' | 'pressure-drop' | 'storm' | 'high-humidity' | 'temp-swing'>;
   disclaimer: string;
 }
 

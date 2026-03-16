@@ -1,4 +1,5 @@
 import type { ContributingFactor, ContributingFactorsResult, DailyCheckIn, TrackingEntry, PatternInsight, SymptomCluster, TrendResult, ForecastResult, TriggerLog } from '../types';
+import { getLatestObservation } from './weatherService';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -293,6 +294,16 @@ export function generateForecast(
     }
   }
 
+  // Signal 7–10: current weather conditions
+  const latestWeather = getLatestObservation();
+  if (latestWeather) {
+    const f = latestWeather.derivedFlags;
+    if (f.pressureDropDetected) signals.push('pressure-drop');
+    if (f.stormDetected)        signals.push('storm');
+    if (f.humidityHigh)         signals.push('high-humidity');
+    if (f.rapidTemperatureChange) signals.push('temp-swing');
+  }
+
   if (signals.length < 2) return null;
 
   const confidence = signals.length >= 4 ? 'high' : signals.length >= 2 ? 'medium' : 'low';
@@ -305,6 +316,10 @@ export function generateForecast(
   if (signals.includes('poor-sleep')) parts.push('recent poor sleep may increase risk');
   if (signals.includes('high-stress')) parts.push('high stress was reported recently');
   if (signals.includes('recent-triggers')) parts.push('multiple triggers logged in last 48h');
+  if (signals.includes('pressure-drop')) parts.push('barometric pressure is dropping — common migraine trigger');
+  if (signals.includes('storm')) parts.push('storm conditions detected');
+  if (signals.includes('high-humidity')) parts.push('high humidity may affect autoimmune symptoms');
+  if (signals.includes('temp-swing')) parts.push('rapid temperature swing detected');
 
   return {
     prediction: `Tomorrow may be an active symptom day — ${parts.join('; ')}.`,

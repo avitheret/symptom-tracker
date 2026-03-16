@@ -1,4 +1,5 @@
 import type { TrackingEntry, DailyCheckIn, TriggerLog, MedicationLog, Condition } from '../types';
+import { getStoredObservations, type WeatherObservation } from './weatherService';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -198,6 +199,45 @@ function extractMedicationFactors(
   }
 
   return factors;
+}
+
+// Weather observations → FactorPresence entries
+// Each named weather factor (Pressure drop, High humidity…) becomes a candidate
+// trigger that the scoring engine can weight against symptom dates.
+function extractWeatherFactors(allDates: string[]): FactorPresence[] {
+  const observations = getStoredObservations();
+  if (observations.length === 0) return [];
+
+  // Build date → latest observation lookup
+  const byDate: Record<string, WeatherObservation> = {};
+  for (const o of observations) byDate[o.date] = o;
+
+  const pressureDrop = new Set<string>();
+  const highHumidity = new Set<string>();
+  const tempSwing    = new Set<string>();
+  const storm        = new Set<string>();
+  const highVolatility = new Set<string>();
+
+  for (const date of allDates) {
+    const obs = byDate[date];
+    if (!obs) continue;
+    const f = obs.derivedFlags;
+    if (f.pressureDropDetected || f.pressureChange6h <= -2) pressureDrop.add(date);
+    if (f.humidityHigh)                                      highHumidity.add(date);
+    if (f.rapidTemperatureChange || Math.abs(f.temperatureChange24h) >= 5) tempSwing.add(date);
+    if (f.stormDetected || f.severeWeather)                  storm.add(date);
+    if (f.weatherVolatility === 'high')                      highVolatility.add(date);
+  }
+
+  const candidates = [
+    { name: 'Pressure drop',      presentDates: pressureDrop  },
+    { name: 'High humidity',      presentDates: highHumidity  },
+    { name: 'Temperature swing',  presentDates: tempSwing     },
+    { name: 'Storm conditions',   presentDates: storm         },
+    { name: 'Weather volatility', presentDates: highVolatility},
+  ];
+  // Only include factors that actually appear on at least 1 day in range
+  return candidates.filter(f => f.presentDates.size > 0);
 }
 
 // ── Core Scoring Engine ──────────────────────────────────────────────────────
@@ -436,12 +476,13 @@ export function analyzeRootCauses(input: RootCauseInput): RootCauseResult {
 
   const totalEpisodes = symptomDates.size;
 
-  // Gather all candidate factors
+  // Gather all candidate factors (including automatic weather data)
   const allFactors: FactorPresence[] = [
     ...extractCheckInFactors(checkIns, allDates),
     ...extractTriggerFactors(triggerLogs, allDates),
     ...extractEntryTriggerFactors(filtered, allDates),
     ...extractMedicationFactors(medicationLogs, allDates),
+    ...extractWeatherFactors(allDates),
   ];
 
   // Deduplicate factors by name (trigger logs + entry triggers may overlap)

@@ -2,7 +2,7 @@ import { X, LayoutDashboard } from 'lucide-react';
 import { WIDGET_DEFS, DEFAULT_WIDGETS } from '../types';
 import type { WidgetId } from '../types';
 
-const WIDGET_ORDER: WidgetId[] = ['stats', 'forecast', 'checkin', 'voiceReview', 'aiInsights', 'medSchedule', 'quickActions', 'conditions', 'recentLog'];
+const WIDGET_ORDER: WidgetId[] = ['stats', 'forecast', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'medSchedule', 'quickActions', 'conditions', 'recentLog'];
 
 interface Props {
   visible: WidgetId[];
