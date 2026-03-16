@@ -139,12 +139,13 @@ function RecentLogWidget({ entries, conditions, onSeeAll }: {
 }
 
 export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenMedSchedule, onEditMedSchedule }: Props) {
-  const { state, setView, selectCondition, loadSampleData, getActivePatient, getPatientConditions, getTodayCheckIn } = useApp();
+  const { state, setView, selectCondition, loadSampleData, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient } = useApp();
   const { user } = useAuth();
-  const [trackingCondition,  setTrackingCondition]  = useState<Condition | null>(null);
-  const [showAddCondition,   setShowAddCondition]   = useState(false);
-  const [showCustomizer,     setShowCustomizer]     = useState(false);
-  const [visibleWidgets,     setVisibleWidgets]     = useState<WidgetId[]>(loadPrefs);
+  const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
+  const [showAddCondition,     setShowAddCondition]     = useState(false);
+  const [showCustomizer,       setShowCustomizer]       = useState(false);
+  const [visibleWidgets,       setVisibleWidgets]       = useState<WidgetId[]>(loadPrefs);
+  const [showAllConditions,    setShowAllConditions]    = useState(false);
 
   const activePatient  = getActivePatient();
   const conditions     = activePatient ? getPatientConditions(activePatient.id) : [];
@@ -338,22 +339,34 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
               />
             </Card>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-3">
-              {conditions.map(c => {
-                const conditionEntries = patientEntries.filter(e => e.conditionId === c.id);
-                const lastEntry = [...conditionEntries].sort((a, b) => b.createdAt - a.createdAt)[0];
-                return (
-                  <ConditionCard
-                    key={c.id}
-                    condition={c}
-                    entryCount={conditionEntries.length}
-                    lastEntryDate={lastEntry?.date}
-                    onLog={() => setTrackingCondition(c)}
-                    onClick={() => { selectCondition(c.id); setView('conditions'); }}
-                  />
-                );
-              })}
-            </div>
+            <>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {(showAllConditions ? conditions : conditions.slice(0, 2)).map(c => {
+                  const conditionEntries = patientEntries.filter(e => e.conditionId === c.id);
+                  const lastEntry = [...conditionEntries].sort((a, b) => b.createdAt - a.createdAt)[0];
+                  return (
+                    <ConditionCard
+                      key={c.id}
+                      condition={c}
+                      entryCount={conditionEntries.length}
+                      lastEntryDate={lastEntry?.date}
+                      onLog={() => setTrackingCondition(c)}
+                      onClick={() => { selectCondition(c.id); setView('conditions'); }}
+                      onRemove={() => removeConditionFromPatient(activePatient!.id, c.id)}
+                    />
+                  );
+                })}
+              </div>
+              {conditions.length > 2 && (
+                <button
+                  onClick={() => setShowAllConditions(v => !v)}
+                  className="w-full mt-3 py-2.5 text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center justify-center gap-1.5 rounded-xl hover:bg-blue-50 transition-colors"
+                >
+                  <ChevronDown size={14} className={`transition-transform ${showAllConditions ? 'rotate-180' : ''}`} />
+                  {showAllConditions ? 'Show less' : `Show ${conditions.length - 2} more condition${conditions.length - 2 !== 1 ? 's' : ''}`}
+                </button>
+              )}
+            </>
           )}
         </section>
       )}
