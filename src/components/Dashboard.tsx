@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Settings, Sparkles, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown } from 'lucide-react';
+import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import TrackingModal from './TrackingModal';
@@ -14,7 +14,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId } from '../types';
 import { DEFAULT_WIDGETS } from '../types';
 
-const APP_VERSION = 'v2.5.1';
+const APP_VERSION = 'v2.6.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -170,6 +170,13 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
+  // Auto-load demo data when there are no entries
+  useEffect(() => {
+    if (totalEntries === 0 && state.activePatientId) {
+      loadSampleData();
+    }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
   const show = (id: WidgetId) => visibleWidgets.includes(id);
 
   const hour        = new Date().getHours();
@@ -303,6 +310,53 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
         </section>
       )}
 
+      {/* ── Conditions widget ─────────────────────────────── */}
+      {show('conditions') && (
+        <section>
+          <SectionHeader
+            title={activePatient ? `${possessiveName(activePatient.name)} Conditions` : 'Conditions'}
+            action={{ label: 'View all →', onClick: () => setView('conditions') }}
+          />
+          {conditions.length === 0 ? (
+            <Card dashed>
+              <EmptyState
+                icon={<Tag size={22} />}
+                title="No conditions yet"
+                description="Add a condition to start tracking your symptoms."
+                action={{ label: 'Add Your First Condition', onClick: () => setShowAddCondition(true), icon: <Plus size={14} /> }}
+                compact
+              />
+            </Card>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-3">
+              {conditions.map(c => {
+                const conditionEntries = patientEntries.filter(e => e.conditionId === c.id);
+                const lastEntry = [...conditionEntries].sort((a, b) => b.createdAt - a.createdAt)[0];
+                return (
+                  <ConditionCard
+                    key={c.id}
+                    condition={c}
+                    entryCount={conditionEntries.length}
+                    lastEntryDate={lastEntry?.date}
+                    onLog={() => setTrackingCondition(c)}
+                    onClick={() => { selectCondition(c.id); setView('conditions'); }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Recent Log widget ─────────────────────────────── */}
+      {show('recentLog') && patientEntries.length > 0 && (
+        <RecentLogWidget
+          entries={patientEntries}
+          conditions={conditions}
+          onSeeAll={() => setView('reports')}
+        />
+      )}
+
       {/* ── Voice Review widget ──────────────────────────── */}
       {(show('voiceReview') || hasPendingVoiceReviews) && <ReviewQueue conditions={conditions} />}
 
@@ -350,73 +404,7 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
         </section>
       )}
 
-      {/* ── Demo data banner ──────────────────────────────── */}
-      {totalEntries === 0 && (
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 sm:px-5 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-blue-800">Explore with demo data</p>
-            <p className="text-xs text-blue-500 mt-0.5">
-              Load 60+ sample entries to see reports, charts, and insights in action.
-            </p>
-          </div>
-          <Button
-            variant="primary"
-            size="md"
-            onClick={loadSampleData}
-            iconLeft={<Sparkles size={14} />}
-            className="flex-shrink-0"
-          >
-            Load Demo Data
-          </Button>
-        </div>
-      )}
 
-      {/* ── Conditions widget ─────────────────────────────── */}
-      {show('conditions') && (
-        <section>
-          <SectionHeader
-            title={activePatient ? `${possessiveName(activePatient.name)} Conditions` : 'Conditions'}
-            action={{ label: 'View all →', onClick: () => setView('conditions') }}
-          />
-          {conditions.length === 0 ? (
-            <Card dashed>
-              <EmptyState
-                icon={<Tag size={22} />}
-                title="No conditions yet"
-                description="Add a condition to start tracking your symptoms."
-                action={{ label: 'Add Your First Condition', onClick: () => setShowAddCondition(true), icon: <Plus size={14} /> }}
-                compact
-              />
-            </Card>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-3">
-              {conditions.map(c => {
-                const conditionEntries = patientEntries.filter(e => e.conditionId === c.id);
-                const lastEntry = [...conditionEntries].sort((a, b) => b.createdAt - a.createdAt)[0];
-                return (
-                  <ConditionCard
-                    key={c.id}
-                    condition={c}
-                    entryCount={conditionEntries.length}
-                    lastEntryDate={lastEntry?.date}
-                    onLog={() => setTrackingCondition(c)}
-                    onClick={() => { selectCondition(c.id); setView('conditions'); }}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Recent Log widget ─────────────────────────────── */}
-      {show('recentLog') && patientEntries.length > 0 && (
-        <RecentLogWidget
-          entries={patientEntries}
-          conditions={conditions}
-          onSeeAll={() => setView('reports')}
-        />
-      )}
 
       {/* ── Empty-state stat cards (shown when no logs yet) ── */}
       {patientEntries.length === 0 && show('stats') && (

@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Trash2, Download, Pill, Stethoscope, TrendingUp } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Trash2, Download, Pill, Stethoscope, TrendingUp, ChevronDown } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { EFFECTIVENESS_LABELS } from '../types';
 import type { EffectivenessRating, MedicationLog, MedicationSchedule } from '../types';
@@ -43,6 +43,70 @@ function medCsvExport(logs: MedicationLog[]) {
   a.download = `medication-log-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function MedLogList({ logs, deleteMedicationLog }: { logs: MedicationLog[]; deleteMedicationLog: (id: string) => void }) {
+  const [visibleCount, setVisibleCount] = useState(5);
+  const visible = logs.slice(0, visibleCount);
+  const hasMore = visibleCount < logs.length;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="divide-y divide-slate-50">
+        {visible.map(log => (
+          <div key={log.id} className="flex items-start gap-3 px-4 py-4 hover:bg-slate-50 transition-colors group min-h-[60px]">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
+              log.type === 'medication' ? 'bg-violet-100' : 'bg-blue-100'
+            }`}>
+              {log.type === 'medication'
+                ? <Pill size={14} className="text-violet-600" />
+                : <Stethoscope size={14} className="text-blue-600" />
+              }
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-sm font-semibold text-slate-900">{log.name}</span>
+                {log.dosage && (
+                  <span className="text-xs text-slate-400">{log.dosage}</span>
+                )}
+                {log.route && (
+                  <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{log.route}</span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {log.date} · {log.dayOfWeek} · {log.time}
+                {log.conditionName && ` · ${log.conditionName}`}
+              </p>
+              {log.notes && (
+                <p className="text-xs text-slate-500 mt-1 italic">{log.notes}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${EFFECTIVENESS_BADGE[log.effectiveness]}`}>
+                {EFFECTIVENESS_LABELS[log.effectiveness]}
+              </span>
+              <button
+                onClick={() => deleteMedicationLog(log.id)}
+                className="text-slate-300 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-2 rounded-lg hover:bg-red-50 min-h-[36px] min-w-[36px] flex items-center justify-center"
+                title="Delete log"
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {hasMore && (
+        <button
+          onClick={() => setVisibleCount(c => c + 5)}
+          className="w-full py-3 text-sm text-violet-600 font-medium hover:bg-violet-50 transition-colors flex items-center justify-center gap-1.5 border-t border-slate-100"
+        >
+          <ChevronDown size={14} />
+          Show more ({logs.length - visibleCount} remaining)
+        </button>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -162,57 +226,7 @@ export default function MedicationTab({ onOpenMedSchedule, onEditMedSchedule }: 
       </div>
 
       {/* Log list */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="divide-y divide-slate-50">
-          {logs.map(log => (
-            <div key={log.id} className="flex items-start gap-3 px-4 py-4 hover:bg-slate-50 transition-colors group min-h-[60px]">
-              {/* Icon */}
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                log.type === 'medication' ? 'bg-violet-100' : 'bg-blue-100'
-              }`}>
-                {log.type === 'medication'
-                  ? <Pill size={14} className="text-violet-600" />
-                  : <Stethoscope size={14} className="text-blue-600" />
-                }
-              </div>
-
-              {/* Details */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-sm font-semibold text-slate-900">{log.name}</span>
-                  {log.dosage && (
-                    <span className="text-xs text-slate-400">{log.dosage}</span>
-                  )}
-                  {log.route && (
-                    <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{log.route}</span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {log.date} · {log.dayOfWeek} · {log.time}
-                  {log.conditionName && ` · ${log.conditionName}`}
-                </p>
-                {log.notes && (
-                  <p className="text-xs text-slate-500 mt-1 italic">{log.notes}</p>
-                )}
-              </div>
-
-              {/* Effectiveness + delete */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${EFFECTIVENESS_BADGE[log.effectiveness]}`}>
-                  {EFFECTIVENESS_LABELS[log.effectiveness]}
-                </span>
-                <button
-                  onClick={() => deleteMedicationLog(log.id)}
-                  className="text-slate-300 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-2 rounded-lg hover:bg-red-50 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                  title="Delete log"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <MedLogList logs={logs} deleteMedicationLog={deleteMedicationLog} />
 
       {/* Safety note */}
       <p className="text-xs text-slate-400 text-center px-4">

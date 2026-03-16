@@ -564,7 +564,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updatePatient = useCallback((
     id: string,
-    patch: Partial<Pick<Patient, 'name' | 'dateOfBirth' | 'notes'>>
+    patch: Partial<Pick<Patient, 'name' | 'dateOfBirth' | 'notes' | 'diagnosis'>>
   ) => {
     dispatch({ type: 'UPDATE_PATIENT', id, patch });
   }, []);

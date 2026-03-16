@@ -1,16 +1,15 @@
+functionsDirectory = "/Users/avi/Library/CloudStorage/Dropbox/claude/symptom-tracker/netlify/functions"
+functionsDirectoryOrigin = "config"
 plugins = []
 headers = []
 redirects = []
-
-[functions]
-
-[functions."*"]
 
 [build]
 publish = "/Users/avi/Library/CloudStorage/Dropbox/claude/symptom-tracker/dist"
 publishOrigin = "ui"
 commandOrigin = "ui"
 command = "npm run build"
+functions = "/Users/avi/Library/CloudStorage/Dropbox/claude/symptom-tracker/netlify/functions"
 
 [build.environment]
 
@@ -25,3 +24,8 @@ command = "npm run build"
 [build.processing.js]
 
 [build.services]
+
+[functions]
+
+[functions."*"]
+node_bundler = "esbuild"
