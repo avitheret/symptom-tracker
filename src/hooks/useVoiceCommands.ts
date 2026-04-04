@@ -16,6 +16,7 @@ export type VoiceCommand =
   | 'CHECK_IN'
   | 'LOG_TRIGGER'
   | 'LOG_MEDICATION'
+  | 'LOG_MEAL'
   | 'OPEN_REPORTS'
   | 'OPEN_INSIGHTS'
   | 'OPEN_HOME'
@@ -118,6 +119,11 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     patterns: ['log med', 'add med', 'medication', 'log pill', 'add pill', 'log meds', 'add meds', 'log treatment', 'add treatment'],
     command: 'LOG_MEDICATION',
     label: 'Log Medication',
+  },
+  {
+    patterns: ['add meal', 'log meal', 'add a meal', 'log a meal', 'food log', 'log food', 'add food', 'log breakfast', 'log lunch', 'log dinner', 'log snack', 'add breakfast', 'add lunch', 'add dinner', 'add snack'],
+    command: 'LOG_MEAL',
+    label: 'Log Meal',
   },
   {
     patterns: ['open report', 'go to report', 'show report', 'reports', 'view report'],

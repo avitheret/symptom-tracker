@@ -82,6 +82,30 @@ export interface TriggerLog {
   inferredTimestamp?: boolean;
 }
 
+// ── Food Log ────────────────────────────────────────────────────────────────
+
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export const MEAL_TYPES: Array<{ id: MealType; label: string; emoji: string }> = [
+  { id: 'breakfast', label: 'Breakfast', emoji: '🌅' },
+  { id: 'lunch',     label: 'Lunch',     emoji: '☀️' },
+  { id: 'dinner',    label: 'Dinner',    emoji: '🌙' },
+  { id: 'snack',     label: 'Snack',     emoji: '🍎' },
+];
+
+export interface FoodLog {
+  id: string;
+  patientId: string;
+  mealType: MealType;
+  foods: string[];              // list of food items
+  date: string;                 // YYYY-MM-DD
+  dayOfWeek: string;
+  time: string;                 // HH:MM
+  notes: string;
+  createdAt: number;
+  sourceTranscript?: string;    // raw voice transcript if voice-logged
+}
+
 // ── Daily Check-In ──────────────────────────────────────────────────────────
 
 export interface DailyCheckIn {

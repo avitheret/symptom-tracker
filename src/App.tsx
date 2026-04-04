@@ -15,6 +15,7 @@ import AddPatientModal from './components/AddPatientModal';
 import CheckInModal from './components/CheckInModal';
 import TriggerModal from './components/TriggerModal';
 import MedicationModal from './components/MedicationModal';
+import FoodLogModal from './components/FoodLogModal';
 import TrackingModal from './components/TrackingModal';
 import VoiceButton from './components/VoiceButton';
 import QuickAddFAB from './components/QuickAddFAB';
@@ -54,6 +55,7 @@ function AppContent() {
   const [showCheckIn, setShowCheckIn] = useState(false);
   const [showTrigger, setShowTrigger] = useState(false);
   const [showMedication, setShowMedication] = useState(false);
+  const [showFoodLog, setShowFoodLog] = useState(false);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [quickLogNoteRef, setQuickLogNoteRef] = useState<string | undefined>();
   const [showNoteComposer, setShowNoteComposer] = useState(false);
@@ -89,6 +91,7 @@ function AppContent() {
     setShowCheckIn(false);
     setShowTrigger(false);
     setShowMedication(false);
+    setShowFoodLog(false);
 
     switch (command) {
       case 'LOG_SYMPTOM': {
@@ -139,6 +142,9 @@ function AppContent() {
         break;
       case 'LOG_MEDICATION':
         setShowMedication(true);
+        break;
+      case 'LOG_MEAL':
+        setShowFoodLog(true);
         break;
       case 'OPEN_REPORTS':
         setView('reports');
@@ -232,6 +238,7 @@ function AppContent() {
             onOpenCheckIn={() => setShowCheckIn(true)}
             onOpenTrigger={() => setShowTrigger(true)}
             onOpenMedication={() => setShowMedication(true)}
+            onOpenFoodLog={() => setShowFoodLog(true)}
             onOpenMedSchedule={() => { setEditingSchedule(undefined); setShowMedSchedule(true); }}
             onEditMedSchedule={(s) => { setEditingSchedule(s); setShowMedSchedule(true); }}
           />
@@ -284,6 +291,7 @@ function AppContent() {
       {showCheckIn && <CheckInModal onClose={() => setShowCheckIn(false)} />}
       {showTrigger && <TriggerModal onClose={() => setShowTrigger(false)} />}
       {showMedication && <MedicationModal onClose={() => setShowMedication(false)} />}
+      {showFoodLog && <FoodLogModal onClose={() => setShowFoodLog(false)} />}
       {showQuickLog && (
         <QuickLogSheet
           referenceNote={quickLogNoteRef}

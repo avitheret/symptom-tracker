@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown } from 'lucide-react';
+import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import TrackingModal from './TrackingModal';
@@ -16,7 +16,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId } from '../types';
 import { DEFAULT_WIDGETS } from '../types';
 
-const APP_VERSION = 'v2.9.1';
+const APP_VERSION = 'v3.0.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -84,6 +84,7 @@ interface Props {
   onOpenCheckIn?:   () => void;
   onOpenTrigger?:   () => void;
   onOpenMedication?: () => void;
+  onOpenFoodLog?:   () => void;
   onOpenMedSchedule?: () => void;
   onEditMedSchedule?: (schedule: import('../types').MedicationSchedule) => void;
 }
@@ -145,7 +146,7 @@ function RecentLogWidget({ entries, conditions, onSeeAll }: {
   );
 }
 
-export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenMedSchedule, onEditMedSchedule }: Props) {
+export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onOpenMedSchedule, onEditMedSchedule }: Props) {
   const { state, setView, selectCondition, loadSampleData, injectTodayDemoEntries, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient } = useApp();
   const { user } = useAuth();
   const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
@@ -238,11 +239,12 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
       </div>
 
       {/* ── Quick-action buttons ──────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-2">
         {[
-          { label: 'Check In',  Icon: Heart, bg: 'bg-rose-50',   border: 'border-rose-100',   dot: 'bg-rose-100',   icon: 'text-rose-500',   text: 'text-rose-700',   onClick: onOpenCheckIn },
-          { label: 'Triggers',  Icon: Zap,   bg: 'bg-amber-50',  border: 'border-amber-100',  dot: 'bg-amber-100',  icon: 'text-amber-500',  text: 'text-amber-700',  onClick: onOpenTrigger },
-          { label: 'Meds',      Icon: Pill,  bg: 'bg-violet-50', border: 'border-violet-100', dot: 'bg-violet-100', icon: 'text-violet-500', text: 'text-violet-700', onClick: onOpenMedication },
+          { label: 'Check In',  Icon: Heart,             bg: 'bg-rose-50',    border: 'border-rose-100',    dot: 'bg-rose-100',    icon: 'text-rose-500',    text: 'text-rose-700',    onClick: onOpenCheckIn },
+          { label: 'Triggers',  Icon: Zap,               bg: 'bg-amber-50',   border: 'border-amber-100',   dot: 'bg-amber-100',   icon: 'text-amber-500',   text: 'text-amber-700',   onClick: onOpenTrigger },
+          { label: 'Meds',      Icon: Pill,              bg: 'bg-violet-50',  border: 'border-violet-100',  dot: 'bg-violet-100',  icon: 'text-violet-500',  text: 'text-violet-700',  onClick: onOpenMedication },
+          { label: 'Meal',      Icon: UtensilsCrossed,   bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-100', icon: 'text-emerald-500', text: 'text-emerald-700', onClick: onOpenFoodLog },
         ].map(({ label, Icon, bg, border, dot, icon, text, onClick }) => (
           <button
             key={label}

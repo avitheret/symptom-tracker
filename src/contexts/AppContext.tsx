@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback } 
 import type {
   AIInsight, Condition, DailyCheckIn, ExtractionResult, ExtractionStatus,
   ExtractedCheckIn, ExtractedMedication, ExtractedSymptom, ExtractedTrigger,
-  MedicationLog, MedicationSchedule, NotificationPreferences, Note,
+  FoodLog, MedicationLog, MedicationSchedule, NotificationPreferences, Note,
   Patient, PatientCondition, Symptom,
   TrackingEntry, TriggerLog, View,
 } from '../types';
@@ -26,6 +26,7 @@ interface State {
   triggerLogs: TriggerLog[];
   checkIns: DailyCheckIn[];
   medicationLogs: MedicationLog[];
+  foodLogs: FoodLog[];
   notes: Note[];
   aiInsights: AIInsight[];
   medicationSchedules: MedicationSchedule[];
@@ -47,6 +48,7 @@ const initialState: State = {
   triggerLogs: [],
   checkIns: [],
   medicationLogs: [],
+  foodLogs: [],
   notes: [],
   aiInsights: [],
   medicationSchedules: [],
@@ -78,6 +80,8 @@ type Action =
   | { type: 'ADD_MEDICATION_LOG'; log: Omit<MedicationLog, 'id' | 'dayOfWeek' | 'createdAt'> }
   | { type: 'DELETE_MEDICATION_LOG'; id: string }
   | { type: 'BULK_ADD_MEDICATION_LOGS'; logs: MedicationLog[] }
+  | { type: 'ADD_FOOD_LOG'; log: Omit<FoodLog, 'id' | 'dayOfWeek' | 'createdAt'> }
+  | { type: 'DELETE_FOOD_LOG'; id: string }
   | { type: 'ADD_NOTE'; note: Note }
   | { type: 'UPDATE_NOTE'; id: string; text: string; updatedAt: number }
   | { type: 'DELETE_NOTE'; id: string }
@@ -125,6 +129,7 @@ function reducer(state: State, action: Action): State {
         triggerLogs: state.triggerLogs.filter(t => t.patientId !== action.id),
         checkIns: state.checkIns.filter(c => c.patientId !== action.id),
         medicationLogs: state.medicationLogs.filter(m => m.patientId !== action.id),
+        foodLogs: state.foodLogs.filter(l => l.patientId !== action.id),
         medicationSchedules: state.medicationSchedules.filter(s => s.patientId !== action.id),
       };
     }
@@ -293,6 +298,19 @@ function reducer(state: State, action: Action): State {
     case 'BULK_ADD_MEDICATION_LOGS':
       return { ...state, medicationLogs: [...state.medicationLogs, ...action.logs] };
 
+    case 'ADD_FOOD_LOG': {
+      const log: FoodLog = {
+        ...action.log,
+        id: `fl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        dayOfWeek: getDayOfWeek(action.log.date),
+        createdAt: Date.now(),
+      };
+      return { ...state, foodLogs: [...state.foodLogs, log] };
+    }
+
+    case 'DELETE_FOOD_LOG':
+      return { ...state, foodLogs: state.foodLogs.filter(l => l.id !== action.id) };
+
     case 'ADD_NOTE':
       return { ...state, notes: [...state.notes, action.note] };
 
@@ -407,6 +425,7 @@ function migrateV1ToV2(): State | null {
       triggerLogs: [],
       checkIns: [],
       medicationLogs: [],
+      foodLogs: [],
       notes: [],
       aiInsights: [],
       medicationSchedules: [],
@@ -432,6 +451,7 @@ function loadInitialState(): State {
           triggerLogs: saved.triggerLogs ?? [],
           checkIns: saved.checkIns ?? [],
           medicationLogs: saved.medicationLogs ?? [],
+          foodLogs: saved.foodLogs ?? [],
           notes: saved.notes ?? [],
           aiInsights: saved.aiInsights ?? [],
           medicationSchedules: saved.medicationSchedules ?? [],
@@ -492,6 +512,8 @@ interface ContextValue {
   getTodayCheckIn: () => DailyCheckIn | undefined;
   addMedicationLog: (log: Omit<MedicationLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => void;
   deleteMedicationLog: (id: string) => void;
+  addFoodLog: (log: Omit<FoodLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => void;
+  deleteFoodLog: (id: string) => void;
   addNote: (text: string, sourceType: Note['sourceType']) => string | undefined;
   updateNote: (id: string, text: string) => void;
   deleteNote: (id: string) => void;
@@ -529,6 +551,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         triggerLogs: state.triggerLogs,
         checkIns: state.checkIns,
         medicationLogs: state.medicationLogs,
+        foodLogs: state.foodLogs,
         notes: state.notes,
         aiInsights: state.aiInsights,
         medicationSchedules: state.medicationSchedules,
@@ -538,7 +561,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore quota errors
     }
-  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.notes, state.aiInsights, state.medicationSchedules, state.notificationPrefs, state.selectedConditionId]);
+  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.notificationPrefs, state.selectedConditionId]);
 
   const createPatient = useCallback((name: string, conditionIds: string[], extra?: { dateOfBirth?: string; notes?: string; diagnosis?: string }) => {
     const id = `pat-${Date.now()}`;
@@ -734,6 +757,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteMedicationLog = useCallback((id: string) => {
     dispatch({ type: 'DELETE_MEDICATION_LOG', id });
+  }, []);
+
+  const addFoodLog = useCallback((log: Omit<FoodLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => {
+    const patientId = state.activePatientId;
+    if (!patientId) return;
+    dispatch({ type: 'ADD_FOOD_LOG', log: { ...log, patientId } });
+  }, [state.activePatientId]);
+
+  const deleteFoodLog = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_FOOD_LOG', id });
   }, []);
 
   const addNote = useCallback((text: string, sourceType: Note['sourceType']): string | undefined => {
@@ -972,6 +1005,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getTodayCheckIn,
         addMedicationLog,
         deleteMedicationLog,
+        addFoodLog,
+        deleteFoodLog,
         addNote,
         updateNote,
         deleteNote,
