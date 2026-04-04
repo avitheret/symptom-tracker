@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Header from './components/Header';
@@ -28,7 +28,6 @@ import ExtractionReviewSheet from './components/ExtractionReviewSheet';
 import MedScheduleModal from './components/MedScheduleModal';
 import AdminPanel from './components/AdminPanel';
 import { useVoiceCommands, type VoiceCommand, type SymptomPrefill } from './hooks/useVoiceCommands';
-import { getSpeechRecognition } from './utils/speech';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useMedScheduleSync } from './hooks/useMedScheduleSync';
 import { extractFromNote } from './utils/noteExtractor';
@@ -57,9 +56,6 @@ function AppContent() {
   const [showTrigger, setShowTrigger] = useState(false);
   const [showMedication, setShowMedication] = useState(false);
   const [showFoodLog, setShowFoodLog] = useState(false);
-  // Holds a SpeechRecognition instance started synchronously in the click/voice
-  // handler so iOS receives it within the user-gesture window.
-  const foodLogRecRef = useRef<any>(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [quickLogNoteRef, setQuickLogNoteRef] = useState<string | undefined>();
   const [showNoteComposer, setShowNoteComposer] = useState(false);
@@ -82,22 +78,14 @@ function AppContent() {
     }
   }, [isAuthenticated, needsOnboarding]);
 
-  // ── Food log opener — starts recording synchronously in the gesture ──────
-  // Must be called directly from a click/touch handler so the browser grants
-  // SpeechRecognition access without a second tap (required on iOS Safari).
+  // ── Food log opener ───────────────────────────────────────────────────────
+  // Calls getUserMedia() within the tap gesture to prime iOS mic permission.
+  // Once permission is granted, SpeechRecognition.start() works from useEffect.
   function openFoodLog() {
-    const SR = getSpeechRecognition();
-    foodLogRecRef.current = null;
-    if (SR) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rec = new (SR as any)();
-        rec.continuous = true;
-        rec.interimResults = true;
-        rec.lang = 'en-US';
-        rec.start(); // ← must happen inside the user-gesture call stack
-        foodLogRecRef.current = rec;
-      } catch { /* FoodLogModal will fall back to manual entry */ }
+    if (navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => stream.getTracks().forEach(t => t.stop()))
+        .catch(() => {}); // FoodLogModal will surface the error gracefully
     }
     setShowFoodLog(true);
   }
@@ -315,12 +303,7 @@ function AppContent() {
       {showCheckIn && <CheckInModal onClose={() => setShowCheckIn(false)} />}
       {showTrigger && <TriggerModal onClose={() => setShowTrigger(false)} />}
       {showMedication && <MedicationModal onClose={() => setShowMedication(false)} />}
-      {showFoodLog && (
-        <FoodLogModal
-          initialRecognition={foodLogRecRef.current}
-          onClose={() => { foodLogRecRef.current = null; setShowFoodLog(false); }}
-        />
-      )}
+      {showFoodLog && <FoodLogModal onClose={() => setShowFoodLog(false)} />}
       {showQuickLog && (
         <QuickLogSheet
           referenceNote={quickLogNoteRef}

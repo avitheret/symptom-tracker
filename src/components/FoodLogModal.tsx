@@ -1,14 +1,17 @@
 /**
  * FoodLogModal — log a meal by voice (zero extra taps) or manually.
  *
- * The parent (App.tsx) starts SpeechRecognition synchronously inside the
- * click handler (user-gesture context) and passes the already-running
- * instance via `initialRecognition`. FoodLogModal just attaches its handlers
- * — no second tap needed, even on iOS Safari.
+ * The parent calls getUserMedia() in the tap handler to prime iOS mic
+ * permission inside the gesture window. By the time this modal mounts and
+ * startDictation() runs in useEffect, the permission is already granted so
+ * SpeechRecognition.start() succeeds — no second tap needed.
  *
- * Auto-stops after 5 s of silence or when user says "Log meal".
+ * Safeguards:
+ *   • Auto-stops after 5 s of silence (once speech begins)
+ *   • "Log meal" phrase triggers immediate stop
+ *   • 15 s no-speech timeout prevents the modal ever getting stuck
  * Foods extracted → auto-submits and closes.
- * Nothing useful extracted → manual form stays open.
+ * Nothing extracted → form stays open for manual entry.
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { UtensilsCrossed, Plus, X, Square, Loader2 } from 'lucide-react';
@@ -25,18 +28,15 @@ function nowTime() {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-interface Props {
-  onClose: () => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  initialRecognition?: any; // already-started instance from the parent gesture
-}
+interface Props { onClose: () => void; }
 
 type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
 
-const SILENCE_MS = 5000;
+const SILENCE_MS   = 5000;
+const NO_SPEECH_MS = 15000; // give up if mic is silent for 15 s from the start
 const STOP_PHRASES = ['log meal', 'log it', 'done recording', 'submit meal'];
 
-export default function FoodLogModal({ onClose, initialRecognition }: Props) {
+export default function FoodLogModal({ onClose }: Props) {
   const { addFoodLog } = useApp();
 
   const [date,       setDate]       = useState(todayStr());
@@ -53,6 +53,7 @@ export default function FoodLogModal({ onClose, initialRecognition }: Props) {
   const recognitionRef = useRef<any>(null);
   const transcriptRef  = useRef('');
   const silenceTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noSpeechTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isBusyRef      = useRef(false);
   const dateRef        = useRef(date);
   const timeRef        = useRef(time);
@@ -60,19 +61,28 @@ export default function FoodLogModal({ onClose, initialRecognition }: Props) {
   useEffect(() => { dateRef.current = date; }, [date]);
   useEffect(() => { timeRef.current = time; }, [time]);
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Timers ────────────────────────────────────────────────────────────────
 
   const clearSilenceTimer = useCallback(() => {
     if (silenceTimer.current) { clearTimeout(silenceTimer.current); silenceTimer.current = null; }
   }, []);
 
+  const clearNoSpeechTimer = useCallback(() => {
+    if (noSpeechTimer.current) { clearTimeout(noSpeechTimer.current); noSpeechTimer.current = null; }
+  }, []);
+
+  // ── Stop recognition ──────────────────────────────────────────────────────
+
   const stopRecognition = useCallback(() => {
     clearSilenceTimer();
+    clearNoSpeechTimer();
     if (recognitionRef.current) {
       try { recognitionRef.current.abort(); } catch { /* ignore */ }
       recognitionRef.current = null;
     }
-  }, [clearSilenceTimer]);
+  }, [clearSilenceTimer, clearNoSpeechTimer]);
+
+  // ── Stop + analyse ────────────────────────────────────────────────────────
 
   const stopAndAnalyse = useCallback(async () => {
     if (isBusyRef.current) return;
@@ -107,46 +117,7 @@ export default function FoodLogModal({ onClose, initialRecognition }: Props) {
     isBusyRef.current = false;
   }, [addFoodLog, onClose, stopRecognition]);
 
-  // ── Attach handlers to a recognition instance ─────────────────────────────
-  // Works whether the instance is brand-new or already started by the parent.
-
-  const attachHandlers = useCallback((rec: any) => {
-    recognitionRef.current = rec;
-
-    rec.onresult = (e: any) => {
-      let full = '';
-      for (let i = 0; i < e.results.length; i++) full += e.results[i][0].transcript + ' ';
-      const t = full.trim();
-      transcriptRef.current = t;
-      setLiveText(t);
-
-      const lower = t.toLowerCase();
-      const hit = STOP_PHRASES.find(p => lower.includes(p));
-      if (hit) {
-        transcriptRef.current = t.replace(new RegExp(hit, 'gi'), '').trim();
-        stopAndAnalyse();
-        return;
-      }
-
-      clearSilenceTimer();
-      silenceTimer.current = setTimeout(() => stopAndAnalyse(), SILENCE_MS);
-    };
-
-    rec.onerror = (e: { error: string }) => {
-      clearSilenceTimer();
-      recognitionRef.current = null;
-      setDictate('error');
-      setDictateErr(
-        e.error === 'not-allowed'
-          ? 'Microphone access denied. Please check your browser settings.'
-          : 'Could not access microphone.'
-      );
-    };
-
-    rec.onend = () => { recognitionRef.current = null; };
-  }, [clearSilenceTimer, stopAndAnalyse]);
-
-  // ── Start a fresh dictation session (fallback path) ───────────────────────
+  // ── Start dictation ───────────────────────────────────────────────────────
 
   const startDictation = useCallback(() => {
     const SR = getSpeechRecognition();
@@ -160,37 +131,72 @@ export default function FoodLogModal({ onClose, initialRecognition }: Props) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rec = new (SR as any)();
-    rec.continuous = true;
+    rec.continuous     = true;
     rec.interimResults = true;
-    rec.lang = 'en-US';
-    attachHandlers(rec);
+    rec.lang           = 'en-US';
+    recognitionRef.current = rec;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      clearNoSpeechTimer(); // speech detected — cancel the no-speech timeout
+
+      let full = '';
+      for (let i = 0; i < e.results.length; i++) full += e.results[i][0].transcript + ' ';
+      const t = full.trim();
+      transcriptRef.current = t;
+      setLiveText(t);
+
+      const lower = t.toLowerCase();
+      const hit   = STOP_PHRASES.find(p => lower.includes(p));
+      if (hit) {
+        transcriptRef.current = t.replace(new RegExp(hit, 'gi'), '').trim();
+        stopAndAnalyse();
+        return;
+      }
+
+      clearSilenceTimer();
+      silenceTimer.current = setTimeout(() => stopAndAnalyse(), SILENCE_MS);
+    };
+
+    rec.onerror = (e: { error: string }) => {
+      stopRecognition();
+      setDictate('error');
+      setDictateErr(
+        e.error === 'not-allowed'
+          ? 'Microphone access denied. Please check your browser settings.'
+          : 'Could not access microphone.'
+      );
+    };
+
+    // If recognition ends unexpectedly (e.g. iOS kills it) while we think
+    // we're still listening, fall back to idle so user can add manually.
+    rec.onend = () => {
+      recognitionRef.current = null;
+      clearSilenceTimer();
+      clearNoSpeechTimer();
+      // Only reset state if we're still in listening mode (not mid-analysis)
+      setDictate(prev => prev === 'listening' ? 'idle' : prev);
+    };
 
     try {
       rec.start();
+      // Fallback: if mic is totally silent for 15 s, stop waiting
+      noSpeechTimer.current = setTimeout(() => {
+        stopRecognition();
+        setDictate('idle');
+      }, NO_SPEECH_MS);
     } catch {
       recognitionRef.current = null;
       setDictate('idle');
     }
-  }, [attachHandlers]);
+  }, [clearNoSpeechTimer, clearSilenceTimer, stopAndAnalyse, stopRecognition]);
 
-  // ── On mount: use the pre-started instance or fall back to startDictation ──
-
+  // Auto-start on mount; cleanup on unmount
   useEffect(() => {
-    isBusyRef.current = false;
-    transcriptRef.current = '';
-    setLiveText('');
-
-    if (initialRecognition) {
-      // Already started by the parent's click handler — just wire up handlers
-      setDictate('listening');
-      attachHandlers(initialRecognition);
-    } else {
-      // Desktop / voice-command path — try to start (works outside iOS gesture)
-      startDictation();
-    }
-
+    startDictation();
     return () => {
       clearSilenceTimer();
+      clearNoSpeechTimer();
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch { /* ignore */ }
         recognitionRef.current = null;
@@ -222,7 +228,7 @@ export default function FoodLogModal({ onClose, initialRecognition }: Props) {
     onClose();
   }
 
-  const meal = MEAL_TYPES.find(m => m.id === mealType)!;
+  const meal        = MEAL_TYPES.find(m => m.id === mealType)!;
   const isRecording = dictate === 'listening';
   const isAnalysing = dictate === 'analysing';
 
@@ -235,7 +241,7 @@ export default function FoodLogModal({ onClose, initialRecognition }: Props) {
     >
       <form onSubmit={handleSubmit} className="px-5 py-5 space-y-5">
 
-        {/* ── Recording status ─────────────────────────────────────── */}
+        {/* ── Recording ────────────────────────────────────────────── */}
         {isRecording && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 space-y-2">
             <div className="flex items-center justify-between">
