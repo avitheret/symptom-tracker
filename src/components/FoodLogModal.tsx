@@ -58,15 +58,10 @@ export default function FoodLogModal({ onClose }: Props) {
   }
 
   // ── Voice dictation ────────────────────────────────────────────────────────
+  // Analysis runs in handleMicToggle (user-initiated stop), NOT in onend.
+  // onend fires after onerror too, so putting logic there causes race conditions.
 
-  const stopRecognition = useCallback(() => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.abort(); } catch { /* ignore */ }
-      recognitionRef.current = null;
-    }
-  }, []);
-
-  const startDictation = useCallback(async () => {
+  const startDictation = useCallback(() => {
     const SR = getSpeechRecognition();
     if (!SR) { setDictateErr('Speech recognition not supported in this browser.'); setDictate('error'); return; }
 
@@ -74,27 +69,53 @@ export default function FoodLogModal({ onClose }: Props) {
     setDictateErr('');
     transcriptRef.current = '';
 
-    const rec = new SR();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new (SR as any)();
     rec.continuous = true;
-    rec.interimResults = false;
+    rec.interimResults = true;
     rec.lang = 'en-US';
     recognitionRef.current = rec;
 
-    rec.onresult = (e: { results: SpeechRecognitionResultList; resultIndex: number }) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        transcriptRef.current += e.results[i][0].transcript + ' ';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      let full = '';
+      for (let i = 0; i < e.results.length; i++) {
+        full += e.results[i][0].transcript + ' ';
       }
+      transcriptRef.current = full.trim();
     };
 
-    rec.onerror = () => {
-      stopRecognition();
-      setDictate('error');
-      setDictateErr('Could not access microphone. Please check permissions.');
-    };
-
-    rec.onend = async () => {
+    rec.onerror = (e: { error: string }) => {
       recognitionRef.current = null;
+      setDictate('error');
+      setDictateErr(
+        e.error === 'not-allowed'
+          ? 'Microphone access denied. Please check permissions.'
+          : 'Could not access microphone. Please try again.'
+      );
+    };
+
+    // onend: just clear the ref — do NOT change state here.
+    // State transitions are owned by handleMicToggle and onerror.
+    rec.onend = () => { recognitionRef.current = null; };
+
+    try {
+      rec.start();
+    } catch {
+      recognitionRef.current = null;
+      setDictate('error');
+      setDictateErr('Could not start microphone.');
+    }
+  }, []);
+
+  const handleMicToggle = useCallback(async () => {
+    if (dictate === 'listening') {
+      // Grab transcript before aborting, then run analysis
       const transcript = transcriptRef.current.trim();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+      }
       if (!transcript) { setDictate('idle'); return; }
 
       setDictate('analysing');
@@ -108,23 +129,10 @@ export default function FoodLogModal({ onClose }: Props) {
         setDictate('error');
         setDictateErr('Could not analyse voice note. Please add items manually.');
       }
-    };
-
-    try {
-      rec.start();
-    } catch {
-      setDictate('error');
-      setDictateErr('Could not start microphone.');
-    }
-  }, [stopRecognition]);
-
-  function handleMicToggle() {
-    if (dictate === 'listening') {
-      stopRecognition(); // triggers onend → analyse
     } else if (dictate === 'idle' || dictate === 'error') {
       startDictation();
     }
-  }
+  }, [dictate, startDictation]);
 
   // ── Submit ─────────────────────────────────────────────────────────────────
 
