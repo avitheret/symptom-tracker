@@ -1,13 +1,17 @@
 /**
- * FoodLogModal — log a meal by voice (auto-starts) or manually.
- * On browsers that allow it, recording starts immediately on open.
- * On iOS/mobile, a single "Tap to Record" button starts it with a user gesture.
- * Auto-stops after 5 s of silence, or when user says "Log meal".
- * If foods are extracted → auto-submits and closes.
- * If extraction fails → falls back to manual form.
+ * FoodLogModal — log a meal by voice (zero extra taps) or manually.
+ *
+ * The parent (App.tsx) starts SpeechRecognition synchronously inside the
+ * click handler (user-gesture context) and passes the already-running
+ * instance via `initialRecognition`. FoodLogModal just attaches its handlers
+ * — no second tap needed, even on iOS Safari.
+ *
+ * Auto-stops after 5 s of silence or when user says "Log meal".
+ * Foods extracted → auto-submits and closes.
+ * Nothing useful extracted → manual form stays open.
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { UtensilsCrossed, Plus, X, Square, Loader2, Mic } from 'lucide-react';
+import { UtensilsCrossed, Plus, X, Square, Loader2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { MEAL_TYPES } from '../types';
 import type { MealType } from '../types';
@@ -21,17 +25,18 @@ function nowTime() {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-interface Props { onClose: () => void; }
+interface Props {
+  onClose: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  initialRecognition?: any; // already-started instance from the parent gesture
+}
 
-// 'needs_tap'  — auto-start failed (needs a user gesture); show big Tap button
-// 'no_mic'     — permission denied
-// 'error'      — analysis or other error
-type DictateState = 'listening' | 'analysing' | 'idle' | 'needs_tap' | 'no_mic' | 'error';
+type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
 
 const SILENCE_MS = 5000;
 const STOP_PHRASES = ['log meal', 'log it', 'done recording', 'submit meal'];
 
-export default function FoodLogModal({ onClose }: Props) {
+export default function FoodLogModal({ onClose, initialRecognition }: Props) {
   const { addFoodLog } = useApp();
 
   const [date,       setDate]       = useState(todayStr());
@@ -45,7 +50,7 @@ export default function FoodLogModal({ onClose }: Props) {
   const [dictateErr, setDictateErr] = useState('');
   const [liveText,   setLiveText]   = useState('');
 
-  const recognitionRef = useRef<ReturnType<typeof getSpeechRecognition> | null>(null);
+  const recognitionRef = useRef<any>(null);
   const transcriptRef  = useRef('');
   const silenceTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isBusyRef      = useRef(false);
@@ -102,30 +107,12 @@ export default function FoodLogModal({ onClose }: Props) {
     isBusyRef.current = false;
   }, [addFoodLog, onClose, stopRecognition]);
 
-  // ── Voice recording ───────────────────────────────────────────────────────
+  // ── Attach handlers to a recognition instance ─────────────────────────────
+  // Works whether the instance is brand-new or already started by the parent.
 
-  const startDictation = useCallback(() => {
-    const SR = getSpeechRecognition();
-    if (!SR) {
-      setDictateErr('Speech recognition not supported in this browser.');
-      setDictate('needs_tap');
-      return;
-    }
-
-    isBusyRef.current = false;
-    transcriptRef.current = '';
-    setDictate('listening');
-    setDictateErr('');
-    setLiveText('');
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rec = new (SR as any)();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = 'en-US';
+  const attachHandlers = useCallback((rec: any) => {
     recognitionRef.current = rec;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
       let full = '';
       for (let i = 0; i < e.results.length; i++) full += e.results[i][0].transcript + ' ';
@@ -148,31 +135,60 @@ export default function FoodLogModal({ onClose }: Props) {
     rec.onerror = (e: { error: string }) => {
       clearSilenceTimer();
       recognitionRef.current = null;
-      if (e.error === 'not-allowed') {
-        setDictate('no_mic');
-        setDictateErr('Microphone access denied. Please check your browser settings.');
-      } else {
-        // Likely needs a direct user gesture — show the tap button
-        setDictate('needs_tap');
-        setDictateErr('');
-      }
+      setDictate('error');
+      setDictateErr(
+        e.error === 'not-allowed'
+          ? 'Microphone access denied. Please check your browser settings.'
+          : 'Could not access microphone.'
+      );
     };
 
     rec.onend = () => { recognitionRef.current = null; };
+  }, [clearSilenceTimer, stopAndAnalyse]);
+
+  // ── Start a fresh dictation session (fallback path) ───────────────────────
+
+  const startDictation = useCallback(() => {
+    const SR = getSpeechRecognition();
+    if (!SR) { setDictate('idle'); return; }
+
+    isBusyRef.current = false;
+    transcriptRef.current = '';
+    setDictate('listening');
+    setDictateErr('');
+    setLiveText('');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new (SR as any)();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    attachHandlers(rec);
 
     try {
       rec.start();
     } catch {
-      clearSilenceTimer();
       recognitionRef.current = null;
-      setDictate('needs_tap');
-      setDictateErr('');
+      setDictate('idle');
     }
-  }, [clearSilenceTimer, stopAndAnalyse]);
+  }, [attachHandlers]);
 
-  // Auto-start on open; cleanup on unmount
+  // ── On mount: use the pre-started instance or fall back to startDictation ──
+
   useEffect(() => {
-    startDictation();
+    isBusyRef.current = false;
+    transcriptRef.current = '';
+    setLiveText('');
+
+    if (initialRecognition) {
+      // Already started by the parent's click handler — just wire up handlers
+      setDictate('listening');
+      attachHandlers(initialRecognition);
+    } else {
+      // Desktop / voice-command path — try to start (works outside iOS gesture)
+      startDictation();
+    }
+
     return () => {
       clearSilenceTimer();
       if (recognitionRef.current) {
@@ -180,7 +196,8 @@ export default function FoodLogModal({ onClose }: Props) {
         recognitionRef.current = null;
       }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Food item helpers ──────────────────────────────────────────────────────
 
@@ -208,7 +225,6 @@ export default function FoodLogModal({ onClose }: Props) {
   const meal = MEAL_TYPES.find(m => m.id === mealType)!;
   const isRecording = dictate === 'listening';
   const isAnalysing = dictate === 'analysing';
-  const needsTap    = dictate === 'needs_tap';
 
   return (
     <Sheet
@@ -218,23 +234,6 @@ export default function FoodLogModal({ onClose }: Props) {
       onClose={onClose}
     >
       <form onSubmit={handleSubmit} className="px-5 py-5 space-y-5">
-
-        {/* ── Needs-gesture: big tap-to-record button ─────────────── */}
-        {needsTap && (
-          <button
-            type="button"
-            onClick={startDictation}
-            className="w-full flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50 py-8 transition-colors hover:bg-emerald-100 active:bg-emerald-200"
-          >
-            <span className="flex items-center justify-center w-14 h-14 rounded-full bg-emerald-500 text-white shadow-md">
-              <Mic size={26} />
-            </span>
-            <div className="text-center">
-              <p className="text-sm font-semibold text-emerald-800">Tap to Record</p>
-              <p className="text-xs text-emerald-600 mt-0.5">Say what you ate — stops after 5 s of silence</p>
-            </div>
-          </button>
-        )}
 
         {/* ── Recording status ─────────────────────────────────────── */}
         {isRecording && (
@@ -269,14 +268,7 @@ export default function FoodLogModal({ onClose }: Props) {
           </div>
         )}
 
-        {/* ── Permission denied ────────────────────────────────────── */}
-        {dictate === 'no_mic' && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-            <p className="text-xs text-red-600">{dictateErr}</p>
-          </div>
-        )}
-
-        {/* ── Analysis error ───────────────────────────────────────── */}
+        {/* ── Error ───────────────────────────────────────────────── */}
         {dictate === 'error' && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 space-y-1">
             <p className="text-xs text-red-600">{dictateErr}</p>
