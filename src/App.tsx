@@ -79,14 +79,10 @@ function AppContent() {
   }, [isAuthenticated, needsOnboarding]);
 
   // ── Food log opener ───────────────────────────────────────────────────────
-  // Calls getUserMedia() within the tap gesture to prime iOS mic permission.
-  // Once permission is granted, SpeechRecognition.start() works from useEffect.
+  // iOS only allows one SpeechRecognition at a time — must stop the wake-word
+  // listener before starting the food-log dictation (same as NoteComposer).
   function openFoodLog() {
-    if (navigator.mediaDevices?.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => stream.getTracks().forEach(t => t.stop()))
-        .catch(() => {}); // FoodLogModal will surface the error gracefully
-    }
+    disableWakeWord(); // release the mic so FoodLogModal can claim it
     setShowFoodLog(true);
   }
 
@@ -303,7 +299,7 @@ function AppContent() {
       {showCheckIn && <CheckInModal onClose={() => setShowCheckIn(false)} />}
       {showTrigger && <TriggerModal onClose={() => setShowTrigger(false)} />}
       {showMedication && <MedicationModal onClose={() => setShowMedication(false)} />}
-      {showFoodLog && <FoodLogModal onClose={() => setShowFoodLog(false)} />}
+      {showFoodLog && <FoodLogModal onClose={() => { setShowFoodLog(false); enableWakeWord(); }} />}
       {showQuickLog && (
         <QuickLogSheet
           referenceNote={quickLogNoteRef}
