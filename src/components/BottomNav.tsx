@@ -1,6 +1,5 @@
 import { LayoutDashboard, List, UtensilsCrossed, BarChart2, Brain, Notebook } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { t } from '../utils/contentManager';
 import type { View } from '../types';
 
 const TABS: Array<{
