@@ -43,9 +43,20 @@ export function useWeatherSync() {
     }
   }, []);
 
-  // Fetch once on mount if location is saved
+  // ── Auto-enable on first launch ───────────────────────────────────────────
+  // If location is already saved → fetch immediately (remembers previous session).
+  // If no location yet AND we haven't asked before → silently request geolocation once.
   useEffect(() => {
-    if (location) doFetch(location);
+    if (location) {
+      doFetch(location);
+      return;
+    }
+    const ASKED_KEY = 'st-weather-asked';
+    if (localStorage.getItem(ASKED_KEY)) return; // already asked once, don't nag
+    localStorage.setItem(ASKED_KEY, 'true');
+    requestGeolocation()
+      .then(loc => { setLocation(loc); doFetch(loc, true); })
+      .catch(() => { /* permission denied or unsupported — user can enable manually */ });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Periodic hourly sync

@@ -16,7 +16,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId, FoodLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.1.0';
+const APP_VERSION = 'v3.2.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
