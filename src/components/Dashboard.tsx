@@ -16,7 +16,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId } from '../types';
 import { DEFAULT_WIDGETS } from '../types';
 
-const APP_VERSION = 'v3.0.2';
+const APP_VERSION = 'v3.0.3';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 

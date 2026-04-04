@@ -1,12 +1,13 @@
 /**
  * FoodLogModal — log a meal by voice (auto-starts) or manually.
- * Recording starts immediately on open.
+ * On browsers that allow it, recording starts immediately on open.
+ * On iOS/mobile, a single "Tap to Record" button starts it with a user gesture.
  * Auto-stops after 5 s of silence, or when user says "Log meal".
  * If foods are extracted → auto-submits and closes.
  * If extraction fails → falls back to manual form.
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { UtensilsCrossed, Plus, X, Square, Loader2 } from 'lucide-react';
+import { UtensilsCrossed, Plus, X, Square, Loader2, Mic } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { MEAL_TYPES } from '../types';
 import type { MealType } from '../types';
@@ -21,7 +22,11 @@ function nowTime() {
 }
 
 interface Props { onClose: () => void; }
-type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
+
+// 'needs_tap'  — auto-start failed (needs a user gesture); show big Tap button
+// 'no_mic'     — permission denied
+// 'error'      — analysis or other error
+type DictateState = 'listening' | 'analysing' | 'idle' | 'needs_tap' | 'no_mic' | 'error';
 
 const SILENCE_MS = 5000;
 const STOP_PHRASES = ['log meal', 'log it', 'done recording', 'submit meal'];
@@ -29,24 +34,23 @@ const STOP_PHRASES = ['log meal', 'log it', 'done recording', 'submit meal'];
 export default function FoodLogModal({ onClose }: Props) {
   const { addFoodLog } = useApp();
 
-  const [date,        setDate]        = useState(todayStr());
-  const [time,        setTime]        = useState(nowTime());
-  const [mealType,    setMealType]    = useState<MealType>(guessMealType());
-  const [foods,       setFoods]       = useState<string[]>([]);
-  const [foodInput,   setFoodInput]   = useState('');
-  const [notes,       setNotes]       = useState('');
-  const [error,       setError]       = useState('');
-  const [dictate,     setDictate]     = useState<DictateState>('idle');
-  const [dictateErr,  setDictateErr]  = useState('');
-  const [liveText,    setLiveText]    = useState('');
+  const [date,       setDate]       = useState(todayStr());
+  const [time,       setTime]       = useState(nowTime());
+  const [mealType,   setMealType]   = useState<MealType>(guessMealType());
+  const [foods,      setFoods]      = useState<string[]>([]);
+  const [foodInput,  setFoodInput]  = useState('');
+  const [notes,      setNotes]      = useState('');
+  const [error,      setError]      = useState('');
+  const [dictate,    setDictate]    = useState<DictateState>('idle');
+  const [dictateErr, setDictateErr] = useState('');
+  const [liveText,   setLiveText]   = useState('');
 
-  // Refs so async callbacks always see latest values
-  const recognitionRef  = useRef<ReturnType<typeof getSpeechRecognition> | null>(null);
-  const transcriptRef   = useRef('');
-  const silenceTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isBusyRef       = useRef(false);
-  const dateRef         = useRef(date);
-  const timeRef         = useRef(time);
+  const recognitionRef = useRef<ReturnType<typeof getSpeechRecognition> | null>(null);
+  const transcriptRef  = useRef('');
+  const silenceTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isBusyRef      = useRef(false);
+  const dateRef        = useRef(date);
+  const timeRef        = useRef(time);
 
   useEffect(() => { dateRef.current = date; }, [date]);
   useEffect(() => { timeRef.current = time; }, [time]);
@@ -65,7 +69,6 @@ export default function FoodLogModal({ onClose }: Props) {
     }
   }, [clearSilenceTimer]);
 
-  // Stop recording, call Claude, auto-submit if foods found
   const stopAndAnalyse = useCallback(async () => {
     if (isBusyRef.current) return;
     isBusyRef.current = true;
@@ -79,7 +82,6 @@ export default function FoodLogModal({ onClose }: Props) {
     try {
       const result = await extractFoodLog(transcript);
       if (result.foods.length > 0) {
-        // Auto-submit
         addFoodLog({
           date: dateRef.current,
           time: timeRef.current,
@@ -89,14 +91,13 @@ export default function FoodLogModal({ onClose }: Props) {
         });
         onClose();
       } else {
-        // No foods extracted — fall back to manual form
         setMealType(result.mealType);
         if (result.notes) setNotes(result.notes);
         setDictate('idle');
       }
-    } catch {
+    } catch (e) {
       setDictate('error');
-      setDictateErr('Could not analyse voice note. Please add items manually.');
+      setDictateErr(e instanceof Error ? e.message : 'Could not analyse voice note. Please add items manually.');
     }
     isBusyRef.current = false;
   }, [addFoodLog, onClose, stopRecognition]);
@@ -107,7 +108,7 @@ export default function FoodLogModal({ onClose }: Props) {
     const SR = getSpeechRecognition();
     if (!SR) {
       setDictateErr('Speech recognition not supported in this browser.');
-      setDictate('error');
+      setDictate('needs_tap');
       return;
     }
 
@@ -132,7 +133,6 @@ export default function FoodLogModal({ onClose }: Props) {
       transcriptRef.current = t;
       setLiveText(t);
 
-      // Stop phrase → strip it and submit
       const lower = t.toLowerCase();
       const hit = STOP_PHRASES.find(p => lower.includes(p));
       if (hit) {
@@ -141,7 +141,6 @@ export default function FoodLogModal({ onClose }: Props) {
         return;
       }
 
-      // Reset silence timer
       clearSilenceTimer();
       silenceTimer.current = setTimeout(() => stopAndAnalyse(), SILENCE_MS);
     };
@@ -149,12 +148,14 @@ export default function FoodLogModal({ onClose }: Props) {
     rec.onerror = (e: { error: string }) => {
       clearSilenceTimer();
       recognitionRef.current = null;
-      setDictate('error');
-      setDictateErr(
-        e.error === 'not-allowed'
-          ? 'Microphone access denied. Please check permissions.'
-          : 'Could not access microphone. Please try again.'
-      );
+      if (e.error === 'not-allowed') {
+        setDictate('no_mic');
+        setDictateErr('Microphone access denied. Please check your browser settings.');
+      } else {
+        // Likely needs a direct user gesture — show the tap button
+        setDictate('needs_tap');
+        setDictateErr('');
+      }
     };
 
     rec.onend = () => { recognitionRef.current = null; };
@@ -164,8 +165,8 @@ export default function FoodLogModal({ onClose }: Props) {
     } catch {
       clearSilenceTimer();
       recognitionRef.current = null;
-      setDictate('error');
-      setDictateErr('Could not start microphone.');
+      setDictate('needs_tap');
+      setDictateErr('');
     }
   }, [clearSilenceTimer, stopAndAnalyse]);
 
@@ -197,8 +198,6 @@ export default function FoodLogModal({ onClose }: Props) {
     if (e.key === 'Enter') { e.preventDefault(); addFood(); }
   }
 
-  // ── Manual submit ──────────────────────────────────────────────────────────
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (foods.length === 0) { setError('Add at least one food item.'); return; }
@@ -209,6 +208,7 @@ export default function FoodLogModal({ onClose }: Props) {
   const meal = MEAL_TYPES.find(m => m.id === mealType)!;
   const isRecording = dictate === 'listening';
   const isAnalysing = dictate === 'analysing';
+  const needsTap    = dictate === 'needs_tap';
 
   return (
     <Sheet
@@ -219,55 +219,69 @@ export default function FoodLogModal({ onClose }: Props) {
     >
       <form onSubmit={handleSubmit} className="px-5 py-5 space-y-5">
 
-        {/* ── Recording / Analysing status ────────────────────────── */}
-        {(isRecording || isAnalysing) && (
-          <div className={`rounded-xl border px-4 py-3 space-y-2 ${
-            isRecording ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'
-          }`}>
+        {/* ── Needs-gesture: big tap-to-record button ─────────────── */}
+        {needsTap && (
+          <button
+            type="button"
+            onClick={startDictation}
+            className="w-full flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50 py-8 transition-colors hover:bg-emerald-100 active:bg-emerald-200"
+          >
+            <span className="flex items-center justify-center w-14 h-14 rounded-full bg-emerald-500 text-white shadow-md">
+              <Mic size={26} />
+            </span>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-emerald-800">Tap to Record</p>
+              <p className="text-xs text-emerald-600 mt-0.5">Say what you ate — stops after 5 s of silence</p>
+            </div>
+          </button>
+        )}
+
+        {/* ── Recording status ─────────────────────────────────────── */}
+        {isRecording && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                {isRecording ? (
-                  <>
-                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                    <p className="text-sm font-medium text-red-700">Recording</p>
-                  </>
-                ) : (
-                  <>
-                    <Loader2 size={14} className="animate-spin text-slate-500" />
-                    <p className="text-sm font-medium text-slate-600">Analysing…</p>
-                  </>
-                )}
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                <p className="text-sm font-medium text-red-700">Recording</p>
               </div>
-              {isRecording && (
-                <button
-                  type="button"
-                  onClick={() => stopAndAnalyse()}
-                  className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-800 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  <Square size={10} fill="currentColor" />
-                  Stop
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => stopAndAnalyse()}
+                className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-800 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <Square size={10} fill="currentColor" />
+                Stop
+              </button>
             </div>
-            {isRecording && (
-              <p className="text-xs text-slate-500 leading-relaxed">
-                {liveText
-                  ? <span className="italic text-slate-700">"{liveText}"</span>
-                  : 'Speak now — stops after 5 s of silence or say "Log meal"'}
-              </p>
-            )}
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {liveText
+                ? <span className="italic text-slate-700">"{liveText}"</span>
+                : 'Speak now — stops after 5 s of silence or say "Log meal"'}
+            </p>
           </div>
         )}
 
-        {/* ── Error ──────────────────────────────────────────────── */}
+        {/* ── Analysing ────────────────────────────────────────────── */}
+        {isAnalysing && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center gap-2.5">
+            <Loader2 size={14} className="animate-spin text-slate-500" />
+            <p className="text-sm font-medium text-slate-600">Analysing your note…</p>
+          </div>
+        )}
+
+        {/* ── Permission denied ────────────────────────────────────── */}
+        {dictate === 'no_mic' && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-xs text-red-600">{dictateErr}</p>
+          </div>
+        )}
+
+        {/* ── Analysis error ───────────────────────────────────────── */}
         {dictate === 'error' && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 space-y-1">
             <p className="text-xs text-red-600">{dictateErr}</p>
-            <button
-              type="button"
-              onClick={startDictation}
-              className="text-xs font-medium text-red-700 underline"
-            >
+            <button type="button" onClick={startDictation}
+              className="text-xs font-medium text-red-700 underline">
               Try again
             </button>
           </div>
@@ -277,21 +291,17 @@ export default function FoodLogModal({ onClose }: Props) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Date</label>
-            <input
-              type="date" value={date} max={todayStr()} onChange={e => setDate(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[48px] bg-white"
-            />
+            <input type="date" value={date} max={todayStr()} onChange={e => setDate(e.target.value)}
+              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[48px] bg-white" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Time</label>
-            <input
-              type="time" value={time} onChange={e => setTime(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[48px] bg-white"
-            />
+            <input type="time" value={time} onChange={e => setTime(e.target.value)}
+              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[48px] bg-white" />
           </div>
         </div>
 
-        {/* ── Meal type chips ─────────────────────────────────────── */}
+        {/* ── Meal type ────────────────────────────────────────────── */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2.5">Meal type</label>
           <div className="flex flex-wrap gap-2">
@@ -303,17 +313,15 @@ export default function FoodLogModal({ onClose }: Props) {
           </div>
         </div>
 
-        {/* ── Food item input ─────────────────────────────────────── */}
+        {/* ── Food item input ──────────────────────────────────────── */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">
             Food items <span className="text-red-500">*</span>
           </label>
           <div className="flex gap-2">
-            <input
-              type="text" value={foodInput} onChange={e => setFoodInput(e.target.value)}
+            <input type="text" value={foodInput} onChange={e => setFoodInput(e.target.value)}
               onKeyDown={handleFoodKeyDown} placeholder="e.g. Pasta, Coffee, Banana…"
-              className="flex-1 border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[48px] bg-white"
-            />
+              className="flex-1 border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[48px] bg-white" />
             <Button type="button" variant="secondary" size="md" onClick={addFood}
               disabled={!foodInput.trim()} iconLeft={<Plus size={15} />}>
               Add
@@ -322,7 +330,7 @@ export default function FoodLogModal({ onClose }: Props) {
           {error && <p className="text-red-500 text-xs mt-1.5">{error}</p>}
         </div>
 
-        {/* ── Selected foods ──────────────────────────────────────── */}
+        {/* ── Selected foods ───────────────────────────────────────── */}
         {foods.length > 0 && (
           <div>
             <p className="text-xs font-medium text-slate-500 mb-2">
@@ -343,15 +351,14 @@ export default function FoodLogModal({ onClose }: Props) {
           </div>
         )}
 
-        {/* ── Notes ──────────────────────────────────────────────── */}
+        {/* ── Notes ───────────────────────────────────────────────── */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">
             Notes <span className="text-slate-400 font-normal">(optional)</span>
           </label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
             placeholder="Portion size, how it made you feel, where you ate…"
-            className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none bg-white"
-          />
+            className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none bg-white" />
         </div>
 
         {/* ── Buttons ─────────────────────────────────────────────── */}

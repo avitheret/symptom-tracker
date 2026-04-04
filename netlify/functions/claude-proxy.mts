@@ -2,11 +2,17 @@ import type { Context } from "@netlify/functions";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOKENS_LIMIT = 1024;
-const ALLOWED_MODELS = ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"];
+const ALLOWED_MODELS = [
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-6",
+  "claude-opus-4-6",
+  // legacy aliases kept for compatibility
+  "claude-sonnet-4-20250514",
+];
 
-// Simple in-memory rate limiter (resets on cold start, good enough for low traffic)
+// Simple in-memory rate limiter (resets on cold start)
 const rateLimits = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 10; // requests per window
+const RATE_LIMIT = 30; // requests per window
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 function checkRateLimit(ip: string): boolean {
@@ -60,14 +66,13 @@ export default async function handler(req: Request, context: Context) {
   try {
     const body = await req.json();
 
-    // Validate request
     if (!body.messages || !Array.isArray(body.messages)) {
       return Response.json({ error: "Invalid request" }, { status: 400 });
     }
 
     const model = ALLOWED_MODELS.includes(body.model)
       ? body.model
-      : ALLOWED_MODELS[0];
+      : ALLOWED_MODELS[0]; // default to haiku (fastest/cheapest)
     const maxTokens = Math.min(body.max_tokens ?? 512, MAX_TOKENS_LIMIT);
 
     const response = await fetch(ANTHROPIC_API_URL, {
@@ -80,7 +85,7 @@ export default async function handler(req: Request, context: Context) {
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
-        system: body.system,
+        ...(body.system ? { system: body.system } : {}),
         messages: body.messages,
       }),
     });

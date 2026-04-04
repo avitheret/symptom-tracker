@@ -43,7 +43,11 @@ Respond with ONLY this JSON:
     }),
   });
 
-  if (!response.ok) throw new Error('Could not analyse voice note.');
+  if (!response.ok) {
+    let msg = `Server error (${response.status})`;
+    try { const e = await response.json(); if (e?.error) msg = e.error; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
 
   const data = await response.json();
   const text: string = data.content?.[0]?.text ?? '';
