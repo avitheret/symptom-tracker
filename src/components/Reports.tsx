@@ -15,7 +15,8 @@ import TrackingModal from './TrackingModal';
 import SwipeableRow from './SwipeableRow';
 import { Button, Card, Chip, TabBar, SectionHeader, EmptyState, Badge } from './ui';
 import type { TabItem } from './ui';
-import type { TrackingEntry } from '../types';
+import type { TrackingEntry, FoodLog } from '../types';
+import { MEAL_TYPES } from '../types';
 
 type Range     = '7d' | '30d' | '90d' | 'all';
 type ChartType = 'line' | 'bar';
@@ -64,7 +65,7 @@ function csvExport(entries: TrackingEntry[]) {
 }
 
 export default function Reports() {
-  const { state, deleteEntry, getPatientConditions, getActivePatient } = useApp();
+  const { state, deleteEntry, deleteFoodLog, getPatientConditions, getActivePatient } = useApp();
 
   const [range,             setRange]             = useState<Range>('30d');
   const [chartType,         setChartType]         = useState<ChartType>('line');
@@ -111,6 +112,14 @@ export default function Reports() {
     filtered.filter(e => e.reviewStatus !== 'to_review' && e.reviewStatus !== 'disapproved'),
     [filtered],
   );
+
+  // ── Food logs filtered by date range ─────────────────────────
+  const filteredMeals = useMemo((): FoodLog[] => {
+    return state.foodLogs
+      .filter(l => l.patientId === state.activePatientId)
+      .filter(l => !cutoff || l.date >= cutoff)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }, [state.foodLogs, state.activePatientId, cutoff]);
 
   // Count of pending-review entries (for filter chip badge)
   const pendingReviewCount = patientEntries.filter(e => e.reviewStatus === 'to_review').length;
@@ -393,71 +402,106 @@ export default function Reports() {
       )}
 
       {/* ── Log tab ───────────────────────────────────────── */}
-      {tab === 'log' && (
-        <Card padding={false}>
-          {filtered.length === 0 ? (
-            <EmptyState
-              icon={<List size={24} />}
-              title="No entries found"
-              description="Try adjusting the date range or condition filter."
-              compact
-            />
-          ) : (
-            <>
-              <p className="text-xs text-slate-400 text-center py-2 bg-slate-50 border-b border-slate-100 sm:hidden">
-                Tap to edit · Swipe left to delete
-              </p>
-              <div className="divide-y divide-slate-50">
-                {filtered.map(entry => {
-                  const cond = conditions.find(c => c.id === entry.conditionId);
-                  const severityClass =
-                    entry.severity >= 7 ? 'text-red-500' :
-                    entry.severity >= 4 ? 'text-amber-500' : 'text-green-500';
-                  return (
-                    <SwipeableRow key={entry.id} onDelete={() => deleteEntry(entry.id)}>
-                      <div
-                        className="flex items-start gap-3 px-4 py-4 hover:bg-slate-50 transition-colors group min-h-[60px] cursor-pointer"
-                        onClick={() => setEditTarget(entry)}
-                      >
-                        <span
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5"
-                          style={{ backgroundColor: cond?.color ?? '#94a3b8' }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-sm font-semibold text-slate-900">{entry.symptomName}</span>
-                            {entry.reviewStatus === 'to_review' && <Badge variant="warning">Review</Badge>}
-                            <span className="text-xs text-slate-400">–</span>
-                            <span className="text-xs text-slate-500">{entry.conditionName}</span>
+      {tab === 'log' && (() => {
+        type LogItem =
+          | { kind: 'symptom'; data: TrackingEntry; ts: number }
+          | { kind: 'meal';    data: FoodLog;        ts: number };
+
+        const combined: LogItem[] = [
+          ...filtered.map(e  => ({ kind: 'symptom' as const, data: e,  ts: e.createdAt  })),
+          ...filteredMeals.map(l => ({ kind: 'meal'    as const, data: l,  ts: l.createdAt  })),
+        ].sort((a, b) => b.ts - a.ts);
+
+        return (
+          <Card padding={false}>
+            {combined.length === 0 ? (
+              <EmptyState
+                icon={<List size={24} />}
+                title="No entries found"
+                description="Try adjusting the date range or condition filter."
+                compact
+              />
+            ) : (
+              <>
+                <p className="text-xs text-slate-400 text-center py-2 bg-slate-50 border-b border-slate-100 sm:hidden">
+                  Tap to edit symptoms · Swipe left to delete
+                </p>
+                <div className="divide-y divide-slate-50">
+                  {combined.map(item => {
+                    if (item.kind === 'meal') {
+                      const log  = item.data;
+                      const meal = MEAL_TYPES.find(m => m.id === log.mealType)!;
+                      return (
+                        <SwipeableRow key={`meal-${log.id}`} onDelete={() => deleteFoodLog(log.id)}>
+                          <div className="flex items-start gap-3 px-4 py-4 min-h-[60px] group">
+                            <span className="text-base flex-shrink-0 mt-0.5">{meal.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-semibold text-slate-900 truncate">{log.foods.join(', ')}</span>
+                                <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">{meal.label}</span>
+                              </div>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {log.date} · {log.dayOfWeek} · {log.time}
+                              </p>
+                              {log.notes && (
+                                <p className="text-xs text-slate-500 mt-1 italic">{log.notes}</p>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {entry.date} · {entry.dayOfWeek} · {entry.time}
-                          </p>
-                          {entry.notes && (
-                            <p className="text-xs text-slate-500 mt-1 italic">{entry.notes}</p>
-                          )}
+                        </SwipeableRow>
+                      );
+                    }
+                    const entry = item.data;
+                    const cond  = conditions.find(c => c.id === entry.conditionId);
+                    const severityClass =
+                      entry.severity >= 7 ? 'text-red-500' :
+                      entry.severity >= 4 ? 'text-amber-500' : 'text-green-500';
+                    return (
+                      <SwipeableRow key={`sym-${entry.id}`} onDelete={() => deleteEntry(entry.id)}>
+                        <div
+                          className="flex items-start gap-3 px-4 py-4 hover:bg-slate-50 transition-colors group min-h-[60px] cursor-pointer"
+                          onClick={() => setEditTarget(entry)}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5"
+                            style={{ backgroundColor: cond?.color ?? '#94a3b8' }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-slate-900">{entry.symptomName}</span>
+                              {entry.reviewStatus === 'to_review' && <Badge variant="warning">Review</Badge>}
+                              <span className="text-xs text-slate-400">–</span>
+                              <span className="text-xs text-slate-500">{entry.conditionName}</span>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {entry.date} · {entry.dayOfWeek} · {entry.time}
+                            </p>
+                            {entry.notes && (
+                              <p className="text-xs text-slate-500 mt-1 italic">{entry.notes}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={`text-sm font-bold tabular-nums ${severityClass}`}>
+                              {entry.severity}/10
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deleteEntry(entry.id); }}
+                              className="hidden sm:flex text-slate-300 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-2 rounded-lg hover:bg-red-50 min-h-[36px] min-w-[36px] items-center justify-center"
+                              title="Delete entry"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className={`text-sm font-bold tabular-nums ${severityClass}`}>
-                            {entry.severity}/10
-                          </span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); deleteEntry(entry.id); }}
-                            className="hidden sm:flex text-slate-300 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-2 rounded-lg hover:bg-red-50 min-h-[36px] min-w-[36px] items-center justify-center"
-                            title="Delete entry"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    </SwipeableRow>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </Card>
-      )}
+                      </SwipeableRow>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </Card>
+        );
+      })()}
 
       {/* ── Edit entry modal ────────────────────────────────── */}
       {editTarget && (() => {

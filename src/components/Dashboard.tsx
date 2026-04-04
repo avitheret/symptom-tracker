@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,10 +13,10 @@ import AIInsightsCard from './AIInsightsCard';
 import MedicationTab from './MedicationTab';
 import DashboardCustomizer from './DashboardCustomizer';
 import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState } from './ui';
-import type { Condition, WidgetId } from '../types';
-import { DEFAULT_WIDGETS } from '../types';
+import type { Condition, WidgetId, FoodLog } from '../types';
+import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.0.6';
+const APP_VERSION = 'v3.1.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -52,6 +52,12 @@ function loadPrefs(): WidgetId[] {
         const forecastIdx = saved.indexOf('forecast');
         if (forecastIdx >= 0) saved.splice(forecastIdx + 1, 0, 'explainToday');
         else saved.unshift('explainToday');
+      }
+      // Migration: add recentMeals if missing (new widget in v3.1.0)
+      if (!saved.includes('recentMeals')) {
+        const recentLogIdx = saved.indexOf('recentLog');
+        if (recentLogIdx >= 0) saved.splice(recentLogIdx, 0, 'recentMeals');
+        else saved.push('recentMeals');
       }
       localStorage.setItem(PREFS_KEY, JSON.stringify(saved));
       return saved;
@@ -89,15 +95,64 @@ interface Props {
   onEditMedSchedule?: (schedule: import('../types').MedicationSchedule) => void;
 }
 
-function RecentLogWidget({ entries, conditions, onSeeAll }: {
-  entries: import('../types').TrackingEntry[];
-  conditions: import('../types').Condition[];
+function RecentMealsWidget({ logs, onSeeAll }: {
+  logs: FoodLog[];
   onSeeAll: () => void;
 }) {
-  const [visibleCount, setVisibleCount] = useState(5);
-  const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
-  const visible = sorted.slice(0, visibleCount);
-  const hasMore = visibleCount < sorted.length;
+  const recent = [...logs].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4);
+  if (recent.length === 0) return null;
+
+  return (
+    <section>
+      <SectionHeader
+        title="Recent Meals"
+        action={{ label: 'See all →', onClick: onSeeAll }}
+      />
+      <Card padding={false}>
+        {recent.map((log, idx) => {
+          const meal = MEAL_TYPES.find(m => m.id === log.mealType)!;
+          return (
+            <div
+              key={log.id}
+              className={`flex items-center gap-3 px-4 py-3.5 min-h-[56px] ${idx < recent.length - 1 ? 'border-b border-slate-50' : ''}`}
+            >
+              <span className="text-lg flex-shrink-0">{meal.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-900 truncate">
+                  {log.foods.join(', ')}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {meal.label} · {formatRelativeDate(log.date)} · {log.time}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </Card>
+    </section>
+  );
+}
+
+function RecentLogWidget({ entries, conditions, foodLogs, onSeeAll }: {
+  entries: import('../types').TrackingEntry[];
+  conditions: import('../types').Condition[];
+  foodLogs: FoodLog[];
+  onSeeAll: () => void;
+}) {
+  const [visibleCount, setVisibleCount] = useState(6);
+
+  // Combine symptom entries + meal logs into one chronological feed
+  type CombinedItem =
+    | { kind: 'symptom'; data: import('../types').TrackingEntry; ts: number }
+    | { kind: 'meal';    data: FoodLog;                          ts: number };
+
+  const combined: CombinedItem[] = [
+    ...entries.map(e  => ({ kind: 'symptom' as const, data: e,  ts: e.createdAt  })),
+    ...foodLogs.map(l => ({ kind: 'meal'    as const, data: l,  ts: l.createdAt  })),
+  ].sort((a, b) => b.ts - a.ts);
+
+  const visible = combined.slice(0, visibleCount);
+  const hasMore = visibleCount < combined.length;
 
   return (
     <section>
@@ -106,12 +161,33 @@ function RecentLogWidget({ entries, conditions, onSeeAll }: {
         action={{ label: 'See all →', onClick: onSeeAll }}
       />
       <Card padding={false}>
-        {visible.map((entry, idx) => {
-          const cond = conditions.find(c => c.id === entry.conditionId);
+        {visible.map((item, idx) => {
+          const isLast = idx === visible.length - 1 && !hasMore;
+          if (item.kind === 'meal') {
+            const meal = MEAL_TYPES.find(m => m.id === item.data.mealType)!;
+            return (
+              <div key={item.data.id}
+                className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${!isLast ? 'border-b border-slate-50' : ''}`}
+              >
+                <span className="text-base flex-shrink-0">{meal.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 truncate">
+                    {item.data.foods.join(', ')}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {meal.label} · {formatRelativeDate(item.data.date)} · {item.data.time}
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Meal</span>
+              </div>
+            );
+          }
+          const entry = item.data;
+          const cond  = conditions.find(c => c.id === entry.conditionId);
           return (
             <div
               key={entry.id}
-              className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${idx < visible.length - 1 || hasMore ? 'border-b border-slate-50' : ''}`}
+              className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${!isLast ? 'border-b border-slate-50' : ''}`}
             >
               <span
                 className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -134,7 +210,7 @@ function RecentLogWidget({ entries, conditions, onSeeAll }: {
         })}
         {hasMore && (
           <button
-            onClick={() => setVisibleCount(c => c + 5)}
+            onClick={() => setVisibleCount(c => c + 6)}
             className="w-full flex items-center justify-center gap-1.5 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
           >
             <ChevronDown size={14} />
@@ -158,6 +234,10 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
   const activePatient  = getActivePatient();
   const conditions     = activePatient ? getPatientConditions(activePatient.id) : [];
   const patientEntries = state.entries.filter(e => e.patientId === state.activePatientId);
+  const patientMeals   = useMemo(
+    () => state.foodLogs.filter(l => l.patientId === state.activePatientId),
+    [state.foodLogs, state.activePatientId],
+  );
   const approvedEntries = patientEntries.filter(
     e => e.reviewStatus !== 'to_review' && e.reviewStatus !== 'disapproved',
   );
@@ -394,11 +474,20 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
         </section>
       )}
 
+      {/* ── Recent Meals widget ───────────────────────────── */}
+      {show('recentMeals') && patientMeals.length > 0 && (
+        <RecentMealsWidget
+          logs={patientMeals}
+          onSeeAll={() => setView('meals')}
+        />
+      )}
+
       {/* ── Recent Log widget ─────────────────────────────── */}
-      {show('recentLog') && patientEntries.length > 0 && (
+      {show('recentLog') && (patientEntries.length > 0 || patientMeals.length > 0) && (
         <RecentLogWidget
           entries={patientEntries}
           conditions={conditions}
+          foodLogs={patientMeals}
           onSeeAll={() => setView('reports')}
         />
       )}

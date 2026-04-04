@@ -16,6 +16,7 @@ import CheckInModal from './components/CheckInModal';
 import TriggerModal from './components/TriggerModal';
 import MedicationModal from './components/MedicationModal';
 import FoodLogModal from './components/FoodLogModal';
+import MealsView from './components/MealsView';
 import TrackingModal from './components/TrackingModal';
 import VoiceButton from './components/VoiceButton';
 import QuickAddFAB from './components/QuickAddFAB';
@@ -252,6 +253,7 @@ function AppContent() {
           />
         )}
         {state.view === 'conditions' && <ConditionsList />}
+        {state.view === 'meals' && <MealsView onOpenFoodLog={openFoodLog} />}
         {state.view === 'reports' && (
           <Reports />
         )}

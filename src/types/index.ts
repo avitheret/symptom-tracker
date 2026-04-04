@@ -125,7 +125,7 @@ export interface DailyCheckIn {
 
 // ── Dashboard Widgets ───────────────────────────────────────────────────────
 
-export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'medSchedule' | 'weather';
+export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'recentMeals' | 'medSchedule' | 'weather';
 
 export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string }> = {
   stats:        { label: 'Summary Stats',    description: 'Total entries, weekly count, average severity' },
@@ -137,17 +137,18 @@ export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string 
   quickActions: { label: 'Quick Log',        description: 'Fast symptom logging by condition' },
   conditions:   { label: 'My Conditions',    description: 'Grid of all tracked conditions' },
   recentLog:    { label: 'Recent Entries',   description: 'Last 5 logged symptoms' },
+  recentMeals:  { label: 'Recent Meals',     description: 'Last few logged meals at a glance' },
   medSchedule:  { label: 'Meds Schedule',   description: 'Upcoming medication doses & reminders' },
   weather:      { label: 'Weather Tracker', description: 'Auto-track pressure, humidity, storms — migraine triggers' },
 };
 
-export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentLog', 'medSchedule'];
+export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentMeals', 'recentLog', 'medSchedule'];
 
 // ── Existing analytics types ─────────────────────────────────────────────────
 
 export const ONBOARDING_CONDITION_LIMIT = 1;
 
-export type View = 'dashboard' | 'conditions' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin';
+export type View = 'dashboard' | 'conditions' | 'meals' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin';
 
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
