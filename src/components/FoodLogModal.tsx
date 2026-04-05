@@ -20,7 +20,7 @@ import { MEAL_TYPES } from '../types';
 import type { MealType } from '../types';
 import { Sheet, Button, Chip } from './ui';
 import { getSpeechRecognition } from '../utils/speech';
-import { extractFoodLog, guessMealType } from '../utils/foodLogExtractor';
+import { extractFoodLog, extractTimeFromTranscript, guessMealType } from '../utils/foodLogExtractor';
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function nowTime() {
@@ -32,6 +32,8 @@ interface Props {
   onClose: () => void;
   /** Pre-select this meal type (extracted from the voice command that opened the modal). */
   initialMealType?: MealType;
+  /** Pre-fill the time field (HH:MM 24h, extracted from the voice command). */
+  initialTime?: string;
 }
 
 type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
@@ -40,11 +42,11 @@ const SILENCE_MS   = 5000;
 const NO_SPEECH_MS = 15000; // give up if mic is silent for 15 s from the start
 const STOP_PHRASES = ['log meal', 'log it', 'done recording', 'submit meal'];
 
-export default function FoodLogModal({ onClose, initialMealType }: Props) {
+export default function FoodLogModal({ onClose, initialMealType, initialTime }: Props) {
   const { addFoodLog } = useApp();
 
   const [date,       setDate]       = useState(todayStr());
-  const [time,       setTime]       = useState(nowTime());
+  const [time,       setTime]       = useState(initialTime ?? nowTime());
   const [mealType,   setMealType]   = useState<MealType>(initialMealType ?? guessMealType());
   const [foods,      setFoods]      = useState<string[]>([]);
   const [foodInput,  setFoodInput]  = useState('');
@@ -100,10 +102,21 @@ export default function FoodLogModal({ onClose, initialMealType }: Props) {
     setDictate('analysing');
     try {
       const result = await extractFoodLog(transcript);
+
+      // Extract time spoken in the transcript ("at 2pm", "at noon", etc.)
+      // and apply it immediately so the Time field updates visibly.
+      const spokenTime = extractTimeFromTranscript(transcript);
+      if (spokenTime) {
+        setTime(spokenTime);
+        timeRef.current = spokenTime; // sync ref for the addFoodLog call below
+      }
+
+      const logTime = spokenTime ?? timeRef.current;
+
       if (result.foods.length > 0) {
         addFoodLog({
           date: dateRef.current,
-          time: timeRef.current,
+          time: logTime,
           mealType: result.mealType,
           foods: result.foods,
           notes: (result.notes || '').trim(),

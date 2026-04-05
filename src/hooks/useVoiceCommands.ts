@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSpeechRecognition } from '../utils/speech';
-import type { MealType } from '../types';
+import type { MealType, MealPrefill } from '../types';
+import { extractTimeFromTranscript } from '../utils/foodLogExtractor';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,10 +40,9 @@ export interface SymptomPrefill {
   severity?:     number;  // parsed from spoken word (mild→3, moderate→5, severe→7, extreme→9)
 }
 
-/** Meal type extracted from a LOG_MEAL voice command. */
-export interface MealPrefill {
-  mealType: MealType;
-}
+// MealPrefill is defined in src/types/index.ts and re-exported here for callers
+// that import it from the hook (keeps their import paths stable).
+export type { MealPrefill };
 
 interface UseVoiceCommandsOptions {
   onCommand: (command: VoiceCommand, label: string, prefill?: SymptomPrefill, mealPrefill?: MealPrefill) => void;
@@ -234,7 +234,7 @@ function extractInlineSymptom(textAfterWake: string): SymptomPrefill | null {
   return { symptomName, conditionHint, severity };
 }
 
-// ── Meal-type extraction ──────────────────────────────────────────────────────
+// ── Meal prefill extraction ───────────────────────────────────────────────────
 
 /**
  * Maps spoken meal keywords to valid MealType values.
@@ -249,13 +249,22 @@ const MEAL_KEYWORD_MAP: Record<string, MealType> = {
   supper:    'dinner',
 };
 
-/** Extract a meal type from spoken text, or return null if none found. */
+/**
+ * Extract meal type AND optional time from spoken text.
+ * Returns null only if neither was found.
+ */
 function extractMealPrefill(text: string): MealPrefill | null {
   const t = text.toLowerCase();
-  for (const [keyword, mealType] of Object.entries(MEAL_KEYWORD_MAP)) {
-    if (t.includes(keyword)) return { mealType };
+
+  let mealType: MealType | undefined;
+  for (const [keyword, mt] of Object.entries(MEAL_KEYWORD_MAP)) {
+    if (t.includes(keyword)) { mealType = mt; break; }
   }
-  return null;
+
+  const time = extractTimeFromTranscript(t) ?? undefined;
+
+  if (mealType === undefined && time === undefined) return null;
+  return { mealType, time };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -93,6 +93,12 @@ export const MEAL_TYPES: Array<{ id: MealType; label: string; emoji: string }> =
   { id: 'snack',     label: 'Snack',     emoji: '🍎' },
 ];
 
+/** Voice-command prefill data passed to FoodLogModal when opened via "Hey Tracker log X". */
+export interface MealPrefill {
+  mealType?: MealType;  // extracted from spoken phrase (breakfast/lunch/dinner/snack/brunch→breakfast/supper→dinner)
+  time?: string;        // HH:MM 24h, extracted from spoken time phrase ("at 2pm", "at noon", etc.)
+}
+
 export interface FoodLog {
   id: string;
   patientId: string;

@@ -28,7 +28,8 @@ import NoteComposer from './components/NoteComposer';
 import ExtractionReviewSheet from './components/ExtractionReviewSheet';
 import MedScheduleModal from './components/MedScheduleModal';
 import AdminPanel from './components/AdminPanel';
-import { useVoiceCommands, type VoiceCommand, type SymptomPrefill, type MealPrefill } from './hooks/useVoiceCommands';
+import { useVoiceCommands, type VoiceCommand, type SymptomPrefill } from './hooks/useVoiceCommands';
+import type { MealPrefill } from './types';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useMedScheduleSync } from './hooks/useMedScheduleSync';
 import { extractFromNote } from './utils/noteExtractor';
@@ -58,6 +59,7 @@ function AppContent() {
   const [showMedication, setShowMedication] = useState(false);
   const [showFoodLog, setShowFoodLog] = useState(false);
   const [foodLogMealType, setFoodLogMealType] = useState<MealType | undefined>();
+  const [foodLogTime, setFoodLogTime] = useState<string | undefined>();
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [quickLogNoteRef, setQuickLogNoteRef] = useState<string | undefined>();
   const [showNoteComposer, setShowNoteComposer] = useState(false);
@@ -83,9 +85,10 @@ function AppContent() {
   // ── Food log opener ───────────────────────────────────────────────────────
   // iOS only allows one SpeechRecognition at a time — must stop the wake-word
   // listener before starting the food-log dictation (same as NoteComposer).
-  function openFoodLog(initialMealType?: MealType) {
+  function openFoodLog(initialMealType?: MealType, initialTime?: string) {
     disableWakeWord(); // release the mic so FoodLogModal can claim it
     setFoodLogMealType(initialMealType);
+    setFoodLogTime(initialTime);
     setShowFoodLog(true);
   }
 
@@ -156,7 +159,7 @@ function AppContent() {
         setShowMedication(true);
         break;
       case 'LOG_MEAL':
-        openFoodLog(mealPrefill?.mealType);
+        openFoodLog(mealPrefill?.mealType, mealPrefill?.time);
         break;
       case 'OPEN_REPORTS':
         setView('reports');
@@ -304,7 +307,7 @@ function AppContent() {
       {showCheckIn && <CheckInModal onClose={() => setShowCheckIn(false)} />}
       {showTrigger && <TriggerModal onClose={() => setShowTrigger(false)} />}
       {showMedication && <MedicationModal onClose={() => setShowMedication(false)} />}
-      {showFoodLog && <FoodLogModal initialMealType={foodLogMealType} onClose={() => { setShowFoodLog(false); setFoodLogMealType(undefined); enableWakeWord(); }} />}
+      {showFoodLog && <FoodLogModal initialMealType={foodLogMealType} initialTime={foodLogTime} onClose={() => { setShowFoodLog(false); setFoodLogMealType(undefined); setFoodLogTime(undefined); enableWakeWord(); }} />}
       {showQuickLog && (
         <QuickLogSheet
           referenceNote={quickLogNoteRef}
