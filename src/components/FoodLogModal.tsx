@@ -28,7 +28,11 @@ function nowTime() {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-interface Props { onClose: () => void; }
+interface Props {
+  onClose: () => void;
+  /** Pre-select this meal type (extracted from the voice command that opened the modal). */
+  initialMealType?: MealType;
+}
 
 type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
 
@@ -36,12 +40,12 @@ const SILENCE_MS   = 5000;
 const NO_SPEECH_MS = 15000; // give up if mic is silent for 15 s from the start
 const STOP_PHRASES = ['log meal', 'log it', 'done recording', 'submit meal'];
 
-export default function FoodLogModal({ onClose }: Props) {
+export default function FoodLogModal({ onClose, initialMealType }: Props) {
   const { addFoodLog } = useApp();
 
   const [date,       setDate]       = useState(todayStr());
   const [time,       setTime]       = useState(nowTime());
-  const [mealType,   setMealType]   = useState<MealType>(guessMealType());
+  const [mealType,   setMealType]   = useState<MealType>(initialMealType ?? guessMealType());
   const [foods,      setFoods]      = useState<string[]>([]);
   const [foodInput,  setFoodInput]  = useState('');
   const [notes,      setNotes]      = useState('');

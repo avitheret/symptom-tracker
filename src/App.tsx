@@ -28,11 +28,11 @@ import NoteComposer from './components/NoteComposer';
 import ExtractionReviewSheet from './components/ExtractionReviewSheet';
 import MedScheduleModal from './components/MedScheduleModal';
 import AdminPanel from './components/AdminPanel';
-import { useVoiceCommands, type VoiceCommand, type SymptomPrefill } from './hooks/useVoiceCommands';
+import { useVoiceCommands, type VoiceCommand, type SymptomPrefill, type MealPrefill } from './hooks/useVoiceCommands';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useMedScheduleSync } from './hooks/useMedScheduleSync';
 import { extractFromNote } from './utils/noteExtractor';
-import type { Condition, Symptom, ExtractionResult, Note, MedicationSchedule } from './types';
+import type { Condition, Symptom, ExtractionResult, Note, MedicationSchedule, MealType } from './types';
 
 // ─── Fuzzy condition / symptom matching ──────────────────────────────────────
 // Priority: exact → starts-with → hint-starts-with-item → any-contains.
@@ -57,6 +57,7 @@ function AppContent() {
   const [showTrigger, setShowTrigger] = useState(false);
   const [showMedication, setShowMedication] = useState(false);
   const [showFoodLog, setShowFoodLog] = useState(false);
+  const [foodLogMealType, setFoodLogMealType] = useState<MealType | undefined>();
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [quickLogNoteRef, setQuickLogNoteRef] = useState<string | undefined>();
   const [showNoteComposer, setShowNoteComposer] = useState(false);
@@ -82,8 +83,9 @@ function AppContent() {
   // ── Food log opener ───────────────────────────────────────────────────────
   // iOS only allows one SpeechRecognition at a time — must stop the wake-word
   // listener before starting the food-log dictation (same as NoteComposer).
-  function openFoodLog() {
+  function openFoodLog(initialMealType?: MealType) {
     disableWakeWord(); // release the mic so FoodLogModal can claim it
+    setFoodLogMealType(initialMealType);
     setShowFoodLog(true);
   }
 
@@ -92,6 +94,7 @@ function AppContent() {
     command: VoiceCommand,
     label: string,
     prefill?: SymptomPrefill,
+    mealPrefill?: MealPrefill,
   ) => {
     setToastLabel(label);
     setToastVisible(false);
@@ -153,7 +156,7 @@ function AppContent() {
         setShowMedication(true);
         break;
       case 'LOG_MEAL':
-        openFoodLog();
+        openFoodLog(mealPrefill?.mealType);
         break;
       case 'OPEN_REPORTS':
         setView('reports');
@@ -301,7 +304,7 @@ function AppContent() {
       {showCheckIn && <CheckInModal onClose={() => setShowCheckIn(false)} />}
       {showTrigger && <TriggerModal onClose={() => setShowTrigger(false)} />}
       {showMedication && <MedicationModal onClose={() => setShowMedication(false)} />}
-      {showFoodLog && <FoodLogModal onClose={() => { setShowFoodLog(false); enableWakeWord(); }} />}
+      {showFoodLog && <FoodLogModal initialMealType={foodLogMealType} onClose={() => { setShowFoodLog(false); setFoodLogMealType(undefined); enableWakeWord(); }} />}
       {showQuickLog && (
         <QuickLogSheet
           referenceNote={quickLogNoteRef}

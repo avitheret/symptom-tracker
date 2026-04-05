@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSpeechRecognition } from '../utils/speech';
+import type { MealType } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,8 +39,13 @@ export interface SymptomPrefill {
   severity?:     number;  // parsed from spoken word (mild→3, moderate→5, severe→7, extreme→9)
 }
 
+/** Meal type extracted from a LOG_MEAL voice command. */
+export interface MealPrefill {
+  mealType: MealType;
+}
+
 interface UseVoiceCommandsOptions {
-  onCommand: (command: VoiceCommand, label: string, prefill?: SymptomPrefill) => void;
+  onCommand: (command: VoiceCommand, label: string, prefill?: SymptomPrefill, mealPrefill?: MealPrefill) => void;
 }
 
 // ─── Debug logging ───────────────────────────────────────────────────────────
@@ -121,7 +127,15 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     label: 'Log Medication',
   },
   {
-    patterns: ['add meal', 'log meal', 'add a meal', 'log a meal', 'food log', 'log food', 'add food', 'log breakfast', 'log lunch', 'log dinner', 'log snack', 'add breakfast', 'add lunch', 'add dinner', 'add snack'],
+    patterns: [
+      'add meal', 'log meal', 'add a meal', 'log a meal', 'food log', 'log food', 'add food',
+      'log breakfast', 'add breakfast',
+      'log lunch',     'add lunch',
+      'log dinner',    'add dinner',
+      'log snack',     'add snack',
+      'log brunch',    'add brunch',
+      'log supper',    'add supper',
+    ],
     command: 'LOG_MEAL',
     label: 'Log Meal',
   },
@@ -218,6 +232,30 @@ function extractInlineSymptom(textAfterWake: string): SymptomPrefill | null {
   if (!symptomName || !conditionHint) return null;
   const severity = severityWord ? SEVERITY_WORDS[severityWord] : undefined;
   return { symptomName, conditionHint, severity };
+}
+
+// ── Meal-type extraction ──────────────────────────────────────────────────────
+
+/**
+ * Maps spoken meal keywords to valid MealType values.
+ * "brunch" → 'breakfast',  "supper" → 'dinner' (closest canonical type).
+ */
+const MEAL_KEYWORD_MAP: Record<string, MealType> = {
+  breakfast: 'breakfast',
+  lunch:     'lunch',
+  dinner:    'dinner',
+  snack:     'snack',
+  brunch:    'breakfast',
+  supper:    'dinner',
+};
+
+/** Extract a meal type from spoken text, or return null if none found. */
+function extractMealPrefill(text: string): MealPrefill | null {
+  const t = text.toLowerCase();
+  for (const [keyword, mealType] of Object.entries(MEAL_KEYWORD_MAP)) {
+    if (t.includes(keyword)) return { mealType };
+  }
+  return null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -407,7 +445,10 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
               clearTimers();
               vibrate(120);
               setState('confirmed');
-              onCommandRef.current(afterWakeCmd.command, afterWakeCmd.label);
+              const wakeMealPrefill = afterWakeCmd.command === 'LOG_MEAL'
+                ? extractMealPrefill(afterWake) ?? undefined
+                : undefined;
+              onCommandRef.current(afterWakeCmd.command, afterWakeCmd.label, undefined, wakeMealPrefill);
               confirmTimerRef.current = setTimeout(() => {
                 if (stateRef.current === 'confirmed') {
                   transcriptBufferRef.current = [];
@@ -437,13 +478,14 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
           command: VoiceCommand,
           label: string,
           prefill?: SymptomPrefill,
+          mealPrefill?: MealPrefill,
         ) => {
           clearTimers();
           vibrate(120);
           transcriptBufferRef.current = [];
           try { recognition.abort(); } catch (_) { /* onend will restart */ }
           setState('confirmed');
-          onCommandRef.current(command, label, prefill);
+          onCommandRef.current(command, label, prefill, mealPrefill);
           confirmTimerRef.current = setTimeout(() => {
             if (stateRef.current === 'confirmed') {
               transcriptBufferRef.current = [];
@@ -470,6 +512,10 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
             transcriptBufferRef.current = [];
             try { recognition.abort(); } catch (_) { /* onend will restart */ }
             setState('wake-listening');
+          } else if (match.command === 'LOG_MEAL') {
+            // Extract meal type from spoken phrase (breakfast/lunch/dinner/snack/brunch/supper)
+            const mealPrefill = extractMealPrefill(partial) ?? undefined;
+            confirmCommand(match.command, match.label, undefined, mealPrefill);
           } else {
             confirmCommand(match.command, match.label);
           }
