@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Header from './components/Header';
@@ -33,7 +33,7 @@ import type { MealPrefill } from './types';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useMedScheduleSync } from './hooks/useMedScheduleSync';
 import { extractFromNote } from './utils/noteExtractor';
-import type { Condition, Symptom, ExtractionResult, Note, MedicationSchedule, MealType } from './types';
+import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType } from './types';
 
 // ─── Fuzzy condition / symptom matching ──────────────────────────────────────
 // Priority: exact → starts-with → hint-starts-with-item → any-contains.
@@ -60,6 +60,7 @@ function AppContent() {
   const [showFoodLog, setShowFoodLog] = useState(false);
   const [foodLogMealType, setFoodLogMealType] = useState<MealType | undefined>();
   const [foodLogTime, setFoodLogTime] = useState<string | undefined>();
+  const foodLogEditTarget = useRef<FoodLog | null>(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [quickLogNoteRef, setQuickLogNoteRef] = useState<string | undefined>();
   const [showNoteComposer, setShowNoteComposer] = useState(false);
@@ -87,8 +88,17 @@ function AppContent() {
   // listener before starting the food-log dictation (same as NoteComposer).
   function openFoodLog(initialMealType?: MealType, initialTime?: string) {
     disableWakeWord(); // release the mic so FoodLogModal can claim it
+    foodLogEditTarget.current = null;
     setFoodLogMealType(initialMealType);
     setFoodLogTime(initialTime);
+    setShowFoodLog(true);
+  }
+
+  function openFoodLogForEdit(log: FoodLog) {
+    disableWakeWord();
+    foodLogEditTarget.current = log;
+    setFoodLogMealType(undefined);
+    setFoodLogTime(undefined);
     setShowFoodLog(true);
   }
 
@@ -254,12 +264,13 @@ function AppContent() {
             onOpenTrigger={() => setShowTrigger(true)}
             onOpenMedication={() => setShowMedication(true)}
             onOpenFoodLog={openFoodLog}
+            onEditMeal={openFoodLogForEdit}
             onOpenMedSchedule={() => { setEditingSchedule(undefined); setShowMedSchedule(true); }}
             onEditMedSchedule={(s) => { setEditingSchedule(s); setShowMedSchedule(true); }}
           />
         )}
         {state.view === 'conditions' && <ConditionsList />}
-        {state.view === 'meals' && <MealsView onOpenFoodLog={openFoodLog} />}
+        {state.view === 'meals' && <MealsView onOpenFoodLog={openFoodLog} onEditMeal={openFoodLogForEdit} />}
         {state.view === 'reports' && (
           <Reports />
         )}
@@ -307,7 +318,18 @@ function AppContent() {
       {showCheckIn && <CheckInModal onClose={() => setShowCheckIn(false)} />}
       {showTrigger && <TriggerModal onClose={() => setShowTrigger(false)} />}
       {showMedication && <MedicationModal onClose={() => setShowMedication(false)} />}
-      {showFoodLog && <FoodLogModal initialMealType={foodLogMealType} initialTime={foodLogTime} onClose={() => { setShowFoodLog(false); setFoodLogMealType(undefined); setFoodLogTime(undefined); enableWakeWord(); }} />}
+      {showFoodLog && <FoodLogModal
+        editTarget={foodLogEditTarget.current ?? undefined}
+        initialMealType={foodLogMealType}
+        initialTime={foodLogTime}
+        onClose={() => {
+          setShowFoodLog(false);
+          setFoodLogMealType(undefined);
+          setFoodLogTime(undefined);
+          foodLogEditTarget.current = null;
+          enableWakeWord();
+        }}
+      />}
       {showQuickLog && (
         <QuickLogSheet
           referenceNote={quickLogNoteRef}

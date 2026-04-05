@@ -1,23 +1,20 @@
 /**
- * FoodLogModal — log a meal by voice (zero extra taps) or manually.
+ * FoodLogModal — log or edit a meal by voice (zero extra taps) or manually.
  *
- * The parent calls getUserMedia() in the tap handler to prime iOS mic
- * permission inside the gesture window. By the time this modal mounts and
- * startDictation() runs in useEffect, the permission is already granted so
- * SpeechRecognition.start() succeeds — no second tap needed.
+ * Voice flow:
+ *   1. Auto-starts recording on mount.
+ *   2. 5 s silence / stop phrase → stops, analyses, pre-fills form — stays open.
+ *   3. A secondary save listener activates when idle; say "save log", "save it",
+ *      "save meal", or "submit log" to confirm. Tap "Save" is always available.
+ *   4. 15 s no-speech timeout drops to idle (mic never stuck).
  *
- * Safeguards:
- *   • Auto-stops after 5 s of silence (once speech begins)
- *   • "Log meal" phrase triggers immediate stop
- *   • 15 s no-speech timeout prevents the modal ever getting stuck
- * Foods extracted → auto-submits and closes.
- * Nothing extracted → form stays open for manual entry.
+ * Edit flow: pass `editTarget` to pre-fill all fields and call updateFoodLog on save.
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { UtensilsCrossed, Plus, X, Square, Loader2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { MEAL_TYPES } from '../types';
-import type { MealType } from '../types';
+import type { FoodLog, MealType } from '../types';
 import { Sheet, Button, Chip } from './ui';
 import { getSpeechRecognition } from '../utils/speech';
 import { extractFoodLog, extractTimeFromTranscript, guessMealType } from '../utils/foodLogExtractor';
@@ -34,6 +31,8 @@ interface Props {
   initialMealType?: MealType;
   /** Pre-fill the time field (HH:MM 24h, extracted from the voice command). */
   initialTime?: string;
+  /** When set, the modal edits an existing log entry rather than creating a new one. */
+  editTarget?: FoodLog;
 }
 
 type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
@@ -41,28 +40,33 @@ type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
 const SILENCE_MS   = 5000;
 const NO_SPEECH_MS = 15000; // give up if mic is silent for 15 s from the start
 const STOP_PHRASES = ['log meal', 'log it', 'done recording', 'submit meal'];
+const SAVE_PHRASES = ['save log', 'save it', 'save meal', 'submit log'];
 
-export default function FoodLogModal({ onClose, initialMealType, initialTime }: Props) {
-  const { addFoodLog } = useApp();
+export default function FoodLogModal({ onClose, initialMealType, initialTime, editTarget }: Props) {
+  const { addFoodLog, updateFoodLog } = useApp();
 
-  const [date,       setDate]       = useState(todayStr());
-  const [time,       setTime]       = useState(initialTime ?? nowTime());
-  const [mealType,   setMealType]   = useState<MealType>(initialMealType ?? guessMealType());
-  const [foods,      setFoods]      = useState<string[]>([]);
+  // Pre-fill from editTarget (edit mode) → voice prefill → sensible defaults (add mode)
+  const [date,       setDate]       = useState(editTarget?.date     ?? todayStr());
+  const [time,       setTime]       = useState(editTarget?.time     ?? initialTime ?? nowTime());
+  const [mealType,   setMealType]   = useState<MealType>(editTarget?.mealType ?? initialMealType ?? guessMealType());
+  const [foods,      setFoods]      = useState<string[]>(editTarget?.foods    ?? []);
   const [foodInput,  setFoodInput]  = useState('');
-  const [notes,      setNotes]      = useState('');
+  const [notes,      setNotes]      = useState(editTarget?.notes    ?? '');
   const [error,      setError]      = useState('');
   const [dictate,    setDictate]    = useState<DictateState>('idle');
   const [dictateErr, setDictateErr] = useState('');
   const [liveText,   setLiveText]   = useState('');
 
-  const recognitionRef = useRef<any>(null);
-  const transcriptRef  = useRef('');
-  const silenceTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const noSpeechTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isBusyRef      = useRef(false);
-  const dateRef        = useRef(date);
-  const timeRef        = useRef(time);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef    = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const saveListenerRef   = useRef<any>(null);
+  const transcriptRef     = useRef('');
+  const silenceTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noSpeechTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isBusyRef         = useRef(false);
+  const dateRef           = useRef(date);
+  const timeRef           = useRef(time);
 
   useEffect(() => { dateRef.current = date; }, [date]);
   useEffect(() => { timeRef.current = time; }, [time]);
@@ -77,7 +81,7 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
     if (noSpeechTimer.current) { clearTimeout(noSpeechTimer.current); noSpeechTimer.current = null; }
   }, []);
 
-  // ── Stop recognition ──────────────────────────────────────────────────────
+  // ── Stop dictation recognition ────────────────────────────────────────────
 
   const stopRecognition = useCallback(() => {
     clearSilenceTimer();
@@ -88,7 +92,31 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
     }
   }, [clearSilenceTimer, clearNoSpeechTimer]);
 
-  // ── Stop + analyse ────────────────────────────────────────────────────────
+  // ── Save logic (shared by button and voice save listener) ────────────────
+
+  const saveLog = useCallback((
+    d: string, t: string, mt: MealType, f: string[], n: string,
+  ) => {
+    if (f.length === 0) { setError('Add at least one food item.'); return; }
+    if (editTarget) {
+      updateFoodLog(editTarget.id, { date: d, time: t, mealType: mt, foods: f, notes: n.trim() });
+    } else {
+      addFoodLog({ date: d, time: t, mealType: mt, foods: f, notes: n.trim() });
+    }
+    onClose();
+  }, [addFoodLog, updateFoodLog, editTarget, onClose]);
+
+  // Keep a stable ref so the save listener can always call the latest closure.
+  const saveLogRef = useRef(saveLog);
+  useEffect(() => { saveLogRef.current = saveLog; }, [saveLog]);
+
+  // Stable refs for current form values — read by the save listener without stale closures.
+  const formValuesRef = useRef({ date, time, mealType, foods, notes });
+  useEffect(() => {
+    formValuesRef.current = { date, time, mealType, foods, notes };
+  }, [date, time, mealType, foods, notes]);
+
+  // ── Stop + analyse (NO auto-submit — populates form, keeps modal open) ───
 
   const stopAndAnalyse = useCallback(async () => {
     if (isBusyRef.current) return;
@@ -103,42 +131,36 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
     try {
       const result = await extractFoodLog(transcript);
 
-      // Extract time spoken in the transcript ("at 2pm", "at noon", etc.)
-      // and apply it immediately so the Time field updates visibly.
+      // Extract spoken time ("at 2pm", "at noon", etc.) and apply visibly.
       const spokenTime = extractTimeFromTranscript(transcript);
       if (spokenTime) {
         setTime(spokenTime);
-        timeRef.current = spokenTime; // sync ref for the addFoodLog call below
+        timeRef.current = spokenTime;
       }
 
-      const logTime = spokenTime ?? timeRef.current;
-
-      if (result.foods.length > 0) {
-        addFoodLog({
-          date: dateRef.current,
-          time: logTime,
-          mealType: result.mealType,
-          foods: result.foods,
-          notes: (result.notes || '').trim(),
-        });
-        onClose();
-      } else {
-        setMealType(result.mealType);
-        if (result.notes) setNotes(result.notes);
-        setDictate('idle');
-      }
+      // Populate form fields — keep modal open for review.
+      if (result.foods.length > 0) setFoods(result.foods);
+      setMealType(result.mealType);
+      if (result.notes) setNotes(result.notes);
+      setDictate('idle');
     } catch (e) {
       setDictate('error');
       setDictateErr(e instanceof Error ? e.message : 'Could not analyse voice note. Please add items manually.');
     }
     isBusyRef.current = false;
-  }, [addFoodLog, onClose, stopRecognition]);
+  }, [stopRecognition]);
 
   // ── Start dictation ───────────────────────────────────────────────────────
 
   const startDictation = useCallback(() => {
     const SR = getSpeechRecognition();
     if (!SR) { setDictate('idle'); return; }
+
+    // Stop any running save listener before claiming the mic.
+    if (saveListenerRef.current) {
+      try { saveListenerRef.current.abort(); } catch { /* ignore */ }
+      saveListenerRef.current = null;
+    }
 
     isBusyRef.current = false;
     transcriptRef.current = '';
@@ -155,7 +177,7 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
-      clearNoSpeechTimer(); // speech detected — cancel the no-speech timeout
+      clearNoSpeechTimer();
 
       let full = '';
       for (let i = 0; i < e.results.length; i++) full += e.results[i][0].transcript + ' ';
@@ -185,19 +207,15 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
       );
     };
 
-    // If recognition ends unexpectedly (e.g. iOS kills it) while we think
-    // we're still listening, fall back to idle so user can add manually.
     rec.onend = () => {
       recognitionRef.current = null;
       clearSilenceTimer();
       clearNoSpeechTimer();
-      // Only reset state if we're still in listening mode (not mid-analysis)
       setDictate(prev => prev === 'listening' ? 'idle' : prev);
     };
 
     try {
       rec.start();
-      // Fallback: if mic is totally silent for 15 s, stop waiting
       noSpeechTimer.current = setTimeout(() => {
         stopRecognition();
         setDictate('idle');
@@ -218,9 +236,66 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
         try { recognitionRef.current.abort(); } catch { /* ignore */ }
         recognitionRef.current = null;
       }
+      if (saveListenerRef.current) {
+        try { saveListenerRef.current.abort(); } catch { /* ignore */ }
+        saveListenerRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Save voice listener — active when idle ────────────────────────────────
+  // Listens for "save log / save it / save meal / submit log" while the form
+  // is open and not currently recording. Restarts on iOS recognition end.
+
+  useEffect(() => {
+    if (dictate !== 'idle') return;
+
+    const SR = getSpeechRecognition();
+    if (!SR) return;
+
+    let active = true;
+
+    function startSaveListener() {
+      if (!active || !SR) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rec = new (SR as any)();
+      rec.continuous     = true;
+      rec.interimResults = true;
+      rec.lang           = 'en-US';
+      saveListenerRef.current = rec;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rec.onresult = (e: any) => {
+        let full = '';
+        for (let i = 0; i < e.results.length; i++) full += e.results[i][0].transcript + ' ';
+        const t = full.trim().toLowerCase();
+        if (SAVE_PHRASES.some(p => t.includes(p))) {
+          const { date: d, time: tm, mealType: mt, foods: f, notes: n } = formValuesRef.current;
+          saveLogRef.current(d, tm, mt, f, n);
+        }
+      };
+
+      rec.onerror = () => { saveListenerRef.current = null; };
+      rec.onend = () => {
+        saveListenerRef.current = null;
+        if (active) setTimeout(() => startSaveListener(), 300);
+      };
+
+      try { rec.start(); } catch { saveListenerRef.current = null; }
+    }
+
+    startSaveListener();
+
+    return () => {
+      active = false;
+      if (saveListenerRef.current) {
+        try { saveListenerRef.current.abort(); } catch { /* ignore */ }
+        saveListenerRef.current = null;
+      }
+    };
+  }, [dictate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Food item helpers ──────────────────────────────────────────────────────
 
@@ -240,18 +315,18 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (foods.length === 0) { setError('Add at least one food item.'); return; }
-    addFoodLog({ date, time, mealType, foods, notes: notes.trim() });
-    onClose();
+    saveLog(date, time, mealType, foods, notes);
   }
 
   const meal        = MEAL_TYPES.find(m => m.id === mealType)!;
   const isRecording = dictate === 'listening';
   const isAnalysing = dictate === 'analysing';
+  const showSaveHint = dictate === 'idle' && foods.length > 0;
+  const submitLabel  = editTarget ? 'Save changes' : 'Log Meal';
 
   return (
     <Sheet
-      title="Log Meal"
+      title={editTarget ? 'Edit Meal' : 'Log Meal'}
       subtitle={isRecording ? 'Listening…' : isAnalysing ? 'Processing…' : 'Record what you ate'}
       icon={<UtensilsCrossed size={16} className="text-emerald-500" />}
       onClose={onClose}
@@ -363,6 +438,13 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
                 </span>
               ))}
             </div>
+
+            {/* Voice save hint — shows after dictation populates foods */}
+            {showSaveHint && (
+              <p className="text-xs text-emerald-600 mt-2.5 leading-relaxed">
+                ✓ Review your log and say <span className="font-semibold">"save log"</span> or tap Save
+              </p>
+            )}
           </div>
         )}
 
@@ -383,7 +465,7 @@ export default function FoodLogModal({ onClose, initialMealType, initialTime }: 
           </Button>
           <Button type="submit" size="lg" disabled={isAnalysing}
             className="flex-1 !bg-emerald-500 hover:!bg-emerald-600 active:!bg-emerald-700">
-            Log Meal
+            {submitLabel}
           </Button>
         </div>
 

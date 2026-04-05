@@ -6,12 +6,13 @@ import { useMemo, useState } from 'react';
 import { UtensilsCrossed, Plus, Trash2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { MEAL_TYPES } from '../types';
-import type { MealType } from '../types';
+import type { FoodLog, MealType } from '../types';
 import { Card, SectionHeader, Chip, EmptyState } from './ui';
 import SwipeableRow from './SwipeableRow';
 
 interface Props {
   onOpenFoodLog?: () => void;
+  onEditMeal?: (log: FoodLog) => void;
 }
 
 function StatPill({ value, label, color }: { value: string | number; label: string; color: string }) {
@@ -23,7 +24,7 @@ function StatPill({ value, label, color }: { value: string | number; label: stri
   );
 }
 
-export default function MealsView({ onOpenFoodLog }: Props) {
+export default function MealsView({ onOpenFoodLog, onEditMeal }: Props) {
   const { state, deleteFoodLog } = useApp();
   const [mealFilter, setMealFilter] = useState<MealType | 'all'>('all');
 
@@ -147,7 +148,11 @@ export default function MealsView({ onOpenFoodLog }: Props) {
                     const meal = MEAL_TYPES.find(m => m.id === log.mealType)!;
                     return (
                       <SwipeableRow key={log.id} onDelete={() => deleteFoodLog(log.id)}>
-                        <div className="flex items-start gap-3 px-4 py-3.5 min-h-[60px] group">
+                        <button
+                          type="button"
+                          onClick={() => onEditMeal?.(log)}
+                          className="w-full text-left flex items-start gap-3 px-4 py-3.5 min-h-[60px] group hover:bg-slate-50 transition-colors"
+                        >
                           <span className="text-xl flex-shrink-0 mt-0.5">{meal.emoji}</span>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
@@ -163,13 +168,13 @@ export default function MealsView({ onOpenFoodLog }: Props) {
                               <p className="text-xs text-slate-400 mt-0.5 leading-snug italic">{log.notes}</p>
                             ) : null}
                           </div>
-                          <button
-                            onClick={() => deleteFoodLog(log.id)}
+                          <div
+                            onClick={e => { e.stopPropagation(); deleteFoodLog(log.id); }}
                             className="flex-shrink-0 p-2 text-slate-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 sm:flex hidden items-center justify-center"
                           >
                             <Trash2 size={14} />
-                          </button>
-                        </div>
+                          </div>
+                        </button>
                       </SwipeableRow>
                     );
                   })}

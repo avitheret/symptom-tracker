@@ -16,7 +16,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId, FoodLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.2.2';
+const APP_VERSION = 'v3.2.3';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -87,17 +87,19 @@ function formatRelativeDate(dateStr: string): string {
 }
 
 interface Props {
-  onOpenCheckIn?:   () => void;
-  onOpenTrigger?:   () => void;
+  onOpenCheckIn?:    () => void;
+  onOpenTrigger?:    () => void;
   onOpenMedication?: () => void;
-  onOpenFoodLog?:   () => void;
+  onOpenFoodLog?:    () => void;
+  onEditMeal?:       (log: FoodLog) => void;
   onOpenMedSchedule?: () => void;
   onEditMedSchedule?: (schedule: import('../types').MedicationSchedule) => void;
 }
 
-function RecentMealsWidget({ logs, onSeeAll }: {
+function RecentMealsWidget({ logs, onSeeAll, onEditMeal }: {
   logs: FoodLog[];
   onSeeAll: () => void;
+  onEditMeal?: (log: FoodLog) => void;
 }) {
   const recent = [...logs].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4);
   if (recent.length === 0) return null;
@@ -112,9 +114,11 @@ function RecentMealsWidget({ logs, onSeeAll }: {
         {recent.map((log, idx) => {
           const meal = MEAL_TYPES.find(m => m.id === log.mealType)!;
           return (
-            <div
+            <button
               key={log.id}
-              className={`flex items-center gap-3 px-4 py-3.5 min-h-[56px] ${idx < recent.length - 1 ? 'border-b border-slate-50' : ''}`}
+              type="button"
+              onClick={() => onEditMeal?.(log)}
+              className={`w-full text-left flex items-center gap-3 px-4 py-3.5 min-h-[56px] hover:bg-slate-50 transition-colors ${idx < recent.length - 1 ? 'border-b border-slate-50' : ''}`}
             >
               <span className="text-lg flex-shrink-0">{meal.emoji}</span>
               <div className="flex-1 min-w-0">
@@ -125,7 +129,7 @@ function RecentMealsWidget({ logs, onSeeAll }: {
                   {meal.label} · {formatRelativeDate(log.date)} · {log.time}
                 </p>
               </div>
-            </div>
+            </button>
           );
         })}
       </Card>
@@ -222,7 +226,7 @@ function RecentLogWidget({ entries, conditions, foodLogs, onSeeAll }: {
   );
 }
 
-export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onOpenMedSchedule, onEditMedSchedule }: Props) {
+export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onEditMeal, onOpenMedSchedule, onEditMedSchedule }: Props) {
   const { state, setView, selectCondition, loadSampleData, injectTodayDemoEntries, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient } = useApp();
   const { user } = useAuth();
   const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
@@ -479,6 +483,7 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
         <RecentMealsWidget
           logs={patientMeals}
           onSeeAll={() => setView('meals')}
+          onEditMeal={onEditMeal}
         />
       )}
 

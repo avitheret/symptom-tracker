@@ -81,6 +81,7 @@ type Action =
   | { type: 'DELETE_MEDICATION_LOG'; id: string }
   | { type: 'BULK_ADD_MEDICATION_LOGS'; logs: MedicationLog[] }
   | { type: 'ADD_FOOD_LOG'; log: Omit<FoodLog, 'id' | 'dayOfWeek' | 'createdAt'> }
+  | { type: 'UPDATE_FOOD_LOG'; id: string; updates: Partial<Omit<FoodLog, 'id' | 'patientId'>> }
   | { type: 'DELETE_FOOD_LOG'; id: string }
   | { type: 'ADD_NOTE'; note: Note }
   | { type: 'UPDATE_NOTE'; id: string; text: string; updatedAt: number }
@@ -308,6 +309,20 @@ function reducer(state: State, action: Action): State {
       return { ...state, foodLogs: [...state.foodLogs, log] };
     }
 
+    case 'UPDATE_FOOD_LOG':
+      return {
+        ...state,
+        foodLogs: state.foodLogs.map(l =>
+          l.id === action.id
+            ? {
+                ...l,
+                ...action.updates,
+                dayOfWeek: action.updates.date ? getDayOfWeek(action.updates.date) : l.dayOfWeek,
+              }
+            : l
+        ),
+      };
+
     case 'DELETE_FOOD_LOG':
       return { ...state, foodLogs: state.foodLogs.filter(l => l.id !== action.id) };
 
@@ -513,6 +528,7 @@ interface ContextValue {
   addMedicationLog: (log: Omit<MedicationLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => void;
   deleteMedicationLog: (id: string) => void;
   addFoodLog: (log: Omit<FoodLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => void;
+  updateFoodLog: (id: string, updates: Partial<Omit<FoodLog, 'id' | 'patientId'>>) => void;
   deleteFoodLog: (id: string) => void;
   addNote: (text: string, sourceType: Note['sourceType']) => string | undefined;
   updateNote: (id: string, text: string) => void;
@@ -765,6 +781,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'ADD_FOOD_LOG', log: { ...log, patientId } });
   }, [state.activePatientId]);
 
+  const updateFoodLog = useCallback((id: string, updates: Partial<Omit<FoodLog, 'id' | 'patientId'>>) => {
+    dispatch({ type: 'UPDATE_FOOD_LOG', id, updates });
+  }, []);
+
   const deleteFoodLog = useCallback((id: string) => {
     dispatch({ type: 'DELETE_FOOD_LOG', id });
   }, []);
@@ -1006,6 +1026,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addMedicationLog,
         deleteMedicationLog,
         addFoodLog,
+        updateFoodLog,
         deleteFoodLog,
         addNote,
         updateNote,
