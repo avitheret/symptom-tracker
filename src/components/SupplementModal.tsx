@@ -9,10 +9,10 @@
  *   4. 15 s no-speech timeout drops to idle (mic never stuck).
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { FlaskConical, Mic, Square, Loader2 } from 'lucide-react';
+import { FlaskConical, Mic, Square, Loader2, ChevronDown, Check } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { SUPPLEMENT_FORMS, SUPPLEMENT_TIME_WINDOWS } from '../types';
-import type { SupplementTimeWindow } from '../types';
+import type { SupplementTimeWindow, SupplementDatabaseEntry } from '../types';
 import { Sheet, Button } from './ui';
 import { getSpeechRecognition } from '../utils/speech';
 import { extractSupplementLog } from '../utils/supplementExtractor';
@@ -40,14 +40,17 @@ const SAVE_PHRASES = ['save log', 'save it', 'save supplement', 'submit'];
 export default function SupplementModal({ onClose, initialName = '', initialTimeWindow, initialQuantity }: Props) {
   const { state, addSupplementLog } = useApp();
 
-  // Look up database entry for description display
+  // ── Database entries for this patient ──────────────────────────────────────
+  const dbEntries = useMemo(
+    () => (state.supplementDatabase ?? []).filter(e => e.patientId === state.activePatientId),
+    [state.supplementDatabase, state.activePatientId]
+  );
+
+  // Look up initial database entry
   const dbMatch = useMemo(() => {
     if (!initialName) return undefined;
-    return (state.supplementDatabase ?? []).find(
-      e => e.patientId === state.activePatientId
-        && e.name.toLowerCase() === initialName.toLowerCase()
-    );
-  }, [initialName, state.supplementDatabase, state.activePatientId]);
+    return dbEntries.find(e => e.name.toLowerCase() === initialName.toLowerCase());
+  }, [initialName, dbEntries]);
 
   const [name,       setName]       = useState(initialName);
   const [dosage,     setDosage]     = useState(initialQuantity ?? dbMatch?.quantity ?? '');
@@ -56,32 +59,40 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
   const [time,       setTime]       = useState(
     initialTimeWindow
       ? SUPPLEMENT_TIME_WINDOWS[initialTimeWindow].start
-      : nowTime()
+      : dbMatch
+        ? SUPPLEMENT_TIME_WINDOWS[dbMatch.timeWindow].start
+        : nowTime()
   );
   const [notes,      setNotes]      = useState('');
   const [dictate,    setDictate]    = useState<DictateState>('idle');
   const [dictateErr, setDictateErr] = useState('');
   const [liveText,   setLiveText]   = useState('');
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerFilter, setPickerFilter] = useState('');
 
-  // Track description from database match (updates when name changes)
-  const description = useMemo(() => {
-    const match = (state.supplementDatabase ?? []).find(
-      e => e.patientId === state.activePatientId
-        && e.name.toLowerCase() === name.toLowerCase()
-    );
-    return match?.description ?? '';
-  }, [name, state.supplementDatabase, state.activePatientId]);
+  // Track active database match (updates when name changes)
+  const activeDbEntry = useMemo(
+    () => dbEntries.find(e => e.name.toLowerCase() === name.toLowerCase()),
+    [name, dbEntries]
+  );
 
-  // Auto-fill quantity from database when name matches and dosage is empty
-  useEffect(() => {
-    const match = (state.supplementDatabase ?? []).find(
-      e => e.patientId === state.activePatientId
-        && e.name.toLowerCase() === name.toLowerCase()
-    );
-    if (match && !dosage) {
-      setDosage(match.quantity);
-    }
-  }, [name]); // eslint-disable-line react-hooks/exhaustive-deps
+  const description = activeDbEntry?.description ?? '';
+
+  // Filtered picker list
+  const filteredDbEntries = useMemo(() => {
+    if (!pickerFilter.trim()) return dbEntries;
+    const f = pickerFilter.toLowerCase();
+    return dbEntries.filter(e => e.name.toLowerCase().includes(f));
+  }, [dbEntries, pickerFilter]);
+
+  // ── Select a database entry — fills all fields ────────────────────────────
+  const selectDbEntry = useCallback((entry: SupplementDatabaseEntry) => {
+    setName(entry.name);
+    setDosage(entry.quantity);
+    setTime(SUPPLEMENT_TIME_WINDOWS[entry.timeWindow].start);
+    setShowPicker(false);
+    setPickerFilter('');
+  }, []);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef  = useRef<any>(null);
@@ -376,20 +387,80 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
           </div>
         )}
 
-        {/* ── Name ─────────────────────────────────────── */}
-        <div>
+        {/* ── Name (with database picker) ─────────────── */}
+        <div className="relative">
           <label className="block text-sm font-medium text-slate-700 mb-1.5">
             Supplement Name <span className="text-red-400">*</span>
           </label>
-          <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g. Vitamin D, Magnesium, Omega-3…"
-            required
-            autoFocus={!initialName && dictate !== 'listening'}
-            className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px] bg-white"
-          />
+
+          {/* Quick-pick chips from database */}
+          {dbEntries.length > 0 && !showPicker && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {dbEntries.map(entry => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => selectDbEntry(entry)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors min-h-[32px] ${
+                    name.toLowerCase() === entry.name.toLowerCase()
+                      ? 'bg-teal-500 text-white'
+                      : 'bg-teal-50 text-teal-700 hover:bg-teal-100'
+                  }`}
+                >
+                  {name.toLowerCase() === entry.name.toLowerCase() && <Check size={12} />}
+                  {entry.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Text input — still allows freeform entry */}
+          <div className="relative">
+            <input
+              type="text"
+              value={name}
+              onChange={e => { setName(e.target.value); if (dbEntries.length > 0) setShowPicker(true); setPickerFilter(e.target.value); }}
+              onFocus={() => { if (dbEntries.length > 0 && !name) setShowPicker(true); }}
+              placeholder={dbEntries.length > 0 ? 'Tap above or type a name…' : 'e.g. Vitamin D, Magnesium, Omega-3…'}
+              required
+              autoFocus={!initialName && dictate !== 'listening'}
+              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px] bg-white pr-10"
+            />
+            {dbEntries.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setShowPicker(!showPicker); setPickerFilter(''); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <ChevronDown size={16} className={`transition-transform ${showPicker ? 'rotate-180' : ''}`} />
+              </button>
+            )}
+          </div>
+
+          {/* Dropdown list */}
+          {showPicker && filteredDbEntries.length > 0 && (
+            <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+              {filteredDbEntries.map(entry => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => selectDbEntry(entry)}
+                  className="w-full text-left px-3 py-2.5 hover:bg-teal-50 transition-colors flex items-center justify-between gap-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <span className="font-medium text-slate-900">{entry.name}</span>
+                    <span className="text-slate-400 ml-2 text-xs">{entry.quantity}</span>
+                    {entry.description && (
+                      <p className="text-xs text-slate-400 truncate mt-0.5">{entry.description}</p>
+                    )}
+                  </div>
+                  <span className="text-xs text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                    {SUPPLEMENT_TIME_WINDOWS[entry.timeWindow].label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Description (read-only from database) ────── */}
