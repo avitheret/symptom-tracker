@@ -19,18 +19,25 @@ export type VoiceCommand =
   | 'LOG_TRIGGER'
   | 'LOG_MEDICATION'
   | 'LOG_MEAL'
+  | 'LOG_SUPPLEMENT'
   | 'OPEN_REPORTS'
   | 'OPEN_INSIGHTS'
   | 'OPEN_HOME'
   | 'OPEN_LOG'
   | 'OPEN_CONDITIONS'
   | 'OPEN_NOTES'
+  | 'OPEN_SUPPLEMENTS'
   | 'ADD_NOTE'
   | 'CANCEL';
 
 export interface CommandMatch {
   command: VoiceCommand;
   label: string;
+}
+
+/** Spoken supplement name extracted from a voice command. */
+export interface SupplementPrefill {
+  name: string;   // e.g. "Vitamin D", "Magnesium"
 }
 
 /** Spoken symptom + condition extracted from an inline voice command. */
@@ -45,7 +52,7 @@ export interface SymptomPrefill {
 export type { MealPrefill };
 
 interface UseVoiceCommandsOptions {
-  onCommand: (command: VoiceCommand, label: string, prefill?: SymptomPrefill, mealPrefill?: MealPrefill) => void;
+  onCommand: (command: VoiceCommand, label: string, prefill?: SymptomPrefill, mealPrefill?: MealPrefill, supplementPrefill?: SupplementPrefill) => void;
 }
 
 // ─── Debug logging ───────────────────────────────────────────────────────────
@@ -127,6 +134,11 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     label: 'Log Medication',
   },
   {
+    patterns: ['log supplement', 'add supplement', 'log vitamin', 'add vitamin', 'log mineral', 'add mineral', 'log probiotic', 'add probiotic', 'log omega', 'add omega', 'log magnesium', 'add magnesium', 'log zinc', 'add zinc', 'supplement'],
+    command: 'LOG_SUPPLEMENT',
+    label: 'Log Supplement',
+  },
+  {
     patterns: [
       'add meal', 'log meal', 'add a meal', 'log a meal', 'food log', 'log food', 'add food',
       'log breakfast', 'add breakfast',
@@ -168,6 +180,11 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     patterns: ['notes', 'open notes', 'my notes', 'show notes', 'view notes'],
     command: 'OPEN_NOTES',
     label: 'Open Notes',
+  },
+  {
+    patterns: ['supplements', 'open supplements', 'my supplements', 'show supplements', 'view supplements'],
+    command: 'OPEN_SUPPLEMENTS',
+    label: 'Open Supplements',
   },
   {
     patterns: ['add note', 'new note', 'quick note', 'take note', 'note this'],
@@ -265,6 +282,27 @@ function extractMealPrefill(text: string): MealPrefill | null {
 
   if (mealType === undefined && time === undefined) return null;
   return { mealType, time };
+}
+
+// ── Supplement prefill extraction ─────────────────────────────────────────────
+
+/**
+ * Extract supplement name from spoken text.
+ * e.g. "log vitamin d" → { name: "Vitamin D" }
+ *      "add magnesium supplement" → { name: "Magnesium" }
+ */
+const INLINE_SUPPLEMENT_RE = /(?:log|add|record)\s+(?:a\s+)?(?:supplement\s+)?(.+?)(?:\s+supplement)?$/i;
+
+function extractSupplementPrefill(text: string): SupplementPrefill | null {
+  const t = text.trim();
+  if (!t) return null;
+  const m = t.match(INLINE_SUPPLEMENT_RE);
+  if (!m) return null;
+  const raw = m[1]
+    .replace(/\b(supplement|vitamin|mineral)\b/gi, '')
+    .trim();
+  if (!raw) return null;
+  return { name: toTitleCase(raw) };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -457,7 +495,11 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
               const wakeMealPrefill = afterWakeCmd.command === 'LOG_MEAL'
                 ? extractMealPrefill(afterWake) ?? undefined
                 : undefined;
-              onCommandRef.current(afterWakeCmd.command, afterWakeCmd.label, undefined, wakeMealPrefill);
+              const wakeSupPrefill = afterWakeCmd.command === 'LOG_SUPPLEMENT'
+                ? extractSupplementPrefill(afterWake) ?? undefined
+                : undefined;
+              const wakeSupLabel = wakeSupPrefill ? `Log ${wakeSupPrefill.name}` : afterWakeCmd.label;
+              onCommandRef.current(afterWakeCmd.command, wakeSupPrefill ? wakeSupLabel : afterWakeCmd.label, undefined, wakeMealPrefill, wakeSupPrefill);
               confirmTimerRef.current = setTimeout(() => {
                 if (stateRef.current === 'confirmed') {
                   transcriptBufferRef.current = [];
@@ -488,13 +530,14 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
           label: string,
           prefill?: SymptomPrefill,
           mealPrefill?: MealPrefill,
+          supplementPrefill?: SupplementPrefill,
         ) => {
           clearTimers();
           vibrate(120);
           transcriptBufferRef.current = [];
           try { recognition.abort(); } catch (_) { /* onend will restart */ }
           setState('confirmed');
-          onCommandRef.current(command, label, prefill, mealPrefill);
+          onCommandRef.current(command, label, prefill, mealPrefill, supplementPrefill);
           confirmTimerRef.current = setTimeout(() => {
             if (stateRef.current === 'confirmed') {
               transcriptBufferRef.current = [];
@@ -525,6 +568,11 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
             // Extract meal type from spoken phrase (breakfast/lunch/dinner/snack/brunch/supper)
             const mealPrefill = extractMealPrefill(partial) ?? undefined;
             confirmCommand(match.command, match.label, undefined, mealPrefill);
+          } else if (match.command === 'LOG_SUPPLEMENT') {
+            // Extract supplement name from spoken phrase
+            const supPrefill = extractSupplementPrefill(partial) ?? undefined;
+            const label = supPrefill ? `Log ${supPrefill.name}` : match.label;
+            confirmCommand(match.command, label, undefined, undefined, supPrefill);
           } else {
             confirmCommand(match.command, match.label);
           }

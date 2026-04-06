@@ -1,4 +1,4 @@
-import { LayoutDashboard, List, UtensilsCrossed, BarChart2, Brain, Notebook } from 'lucide-react';
+import { LayoutDashboard, List, UtensilsCrossed, BarChart2, Brain, Notebook, FlaskConical } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import type { View } from '../types';
 
@@ -12,7 +12,8 @@ const TABS: Array<{
   { view: 'meals',      label: 'Meals',      Icon: UtensilsCrossed },
   { view: 'reports',    label: 'Reports',    Icon: BarChart2 },
   { view: 'insights',   label: 'Insights',   Icon: Brain },
-  { view: 'notes',      label: 'Notes',      Icon: Notebook },
+  { view: 'supplements', label: 'Supps',      Icon: FlaskConical },
+  { view: 'notes',       label: 'Notes',      Icon: Notebook },
 ];
 
 export default function BottomNav() {

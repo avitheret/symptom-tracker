@@ -154,7 +154,7 @@ export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday',
 
 export const ONBOARDING_CONDITION_LIMIT = 1;
 
-export type View = 'dashboard' | 'conditions' | 'meals' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin';
+export type View = 'dashboard' | 'conditions' | 'meals' | 'supplements' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin';
 
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
@@ -322,6 +322,48 @@ export interface NotificationPreferences {
   enabled: boolean;                // master toggle
   reminderWindowMinutes: number;   // +/- window for triggering (default 2)
   soundEnabled: boolean;
+}
+
+// ── Supplement Tracking ──────────────────────────────────────────────────────
+
+export const SUPPLEMENT_FORMS = ['Capsule', 'Tablet', 'Powder', 'Liquid', 'Gummy', 'Softgel', 'Other'] as const;
+export type SupplementForm = typeof SUPPLEMENT_FORMS[number];
+
+export interface SupplementLog {
+  id: string;
+  patientId: string;
+  name: string;
+  dosage?: string;
+  form?: SupplementForm;
+  date: string;               // YYYY-MM-DD
+  dayOfWeek: string;
+  time: string;               // HH:MM
+  notes: string;
+  createdAt: number;
+  sourceTranscript?: string;
+}
+
+export type SupplementFrequency = 'daily' | 'twice_daily' | 'weekly' | 'as_needed';
+
+export const SUPPLEMENT_FREQUENCY_LABELS: Record<SupplementFrequency, string> = {
+  daily:       'Once daily',
+  twice_daily: 'Twice daily',
+  weekly:      'Weekly',
+  as_needed:   'As needed',
+};
+
+export interface SupplementSchedule {
+  id: string;
+  patientId: string;
+  name: string;               // "Vitamin D"
+  dosage?: string;            // "1000 IU"
+  form?: SupplementForm;
+  frequency: SupplementFrequency;
+  reminderTime?: string;      // "08:00" (HH:MM) — optional reminder time
+  status: 'active' | 'paused';
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // ── Activity Log (Admin Panel) ────────────────────────────────────────────────

@@ -25,15 +25,18 @@ import VoiceCommandToast from './components/VoiceCommandToast';
 import Onboarding, { isOnboardingDone } from './components/Onboarding';
 import Notes from './components/Notes';
 import NoteComposer from './components/NoteComposer';
+import Supplements from './components/Supplements';
+import SupplementModal from './components/SupplementModal';
+import SupplementScheduleModal from './components/SupplementScheduleModal';
 import ExtractionReviewSheet from './components/ExtractionReviewSheet';
 import MedScheduleModal from './components/MedScheduleModal';
 import AdminPanel from './components/AdminPanel';
-import { useVoiceCommands, type VoiceCommand, type SymptomPrefill } from './hooks/useVoiceCommands';
+import { useVoiceCommands, type VoiceCommand, type SymptomPrefill, type SupplementPrefill } from './hooks/useVoiceCommands';
 import type { MealPrefill } from './types';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useMedScheduleSync } from './hooks/useMedScheduleSync';
 import { extractFromNote } from './utils/noteExtractor';
-import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType } from './types';
+import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType, SupplementSchedule } from './types';
 
 // ─── Fuzzy condition / symptom matching ──────────────────────────────────────
 // Priority: exact → starts-with → hint-starts-with-item → any-contains.
@@ -69,6 +72,10 @@ function AppContent() {
   const [extractionPending, setExtractionPending] = useState<ExtractionResult | null>(null);
   const [showMedSchedule, setShowMedSchedule] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<MedicationSchedule | undefined>();
+  const [showSupplement, setShowSupplement] = useState(false);
+  const [supplementPrefillName, setSupplementPrefillName] = useState<string | undefined>();
+  const [showSupplementSchedule, setShowSupplementSchedule] = useState(false);
+  const [editingSupplementSchedule, setEditingSupplementSchedule] = useState<SupplementSchedule | undefined>();
   const [toastVisible, setToastVisible] = useState(false);
   const [toastLabel, setToastLabel] = useState('');
   // When a full inline voice command matches (e.g. "log dizziness to migraine"),
@@ -108,6 +115,7 @@ function AppContent() {
     label: string,
     prefill?: SymptomPrefill,
     mealPrefill?: MealPrefill,
+    supplementPrefill?: SupplementPrefill,
   ) => {
     setToastLabel(label);
     setToastVisible(false);
@@ -117,6 +125,7 @@ function AppContent() {
     setShowTrigger(false);
     setShowMedication(false);
     setShowFoodLog(false);
+    setShowSupplement(false);
 
     switch (command) {
       case 'LOG_SYMPTOM': {
@@ -170,6 +179,14 @@ function AppContent() {
         break;
       case 'LOG_MEAL':
         openFoodLog(mealPrefill?.mealType, mealPrefill?.time);
+        break;
+      case 'LOG_SUPPLEMENT':
+        disableWakeWord();
+        setSupplementPrefillName(supplementPrefill?.name);
+        setShowSupplement(true);
+        break;
+      case 'OPEN_SUPPLEMENTS':
+        setView('supplements');
         break;
       case 'OPEN_REPORTS':
         setView('reports');
@@ -276,6 +293,29 @@ function AppContent() {
         )}
         {state.view === 'insights' && <Insights />}
         {state.view === 'patients' && <PatientManager />}
+        {state.view === 'supplements' && (
+          <div className="max-w-2xl mx-auto px-4 py-5 space-y-2 pb-24">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">Supplements</h1>
+                <p className="text-sm text-slate-400 mt-0.5">
+                  {(state.supplementLogs ?? []).filter(l => l.patientId === state.activePatientId).length} entries logged
+                </p>
+              </div>
+              <button
+                onClick={() => { setSupplementPrefillName(undefined); setShowSupplement(true); }}
+                className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 active:bg-teal-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-colors min-h-[44px]"
+              >
+                + Log Supplement
+              </button>
+            </div>
+            <Supplements
+              onOpenSupplementModal={() => { setSupplementPrefillName(undefined); setShowSupplement(true); }}
+              onOpenScheduleModal={() => { setEditingSupplementSchedule(undefined); setShowSupplementSchedule(true); }}
+              onEditSchedule={(s) => { setEditingSupplementSchedule(s); setShowSupplementSchedule(true); }}
+            />
+          </div>
+        )}
         {state.view === 'notes' && (
           <Notes
             onNewNote={() => { setNoteComposerAutoStart(false); setShowNoteComposer(true); }}
@@ -362,6 +402,26 @@ function AppContent() {
           onConfirm={handleConfirmExtraction}
           onSkip={handleSkipExtraction}
           onClose={() => setExtractionPending(null)}
+        />
+      )}
+
+      {/* Supplement log modal */}
+      {showSupplement && (
+        <SupplementModal
+          initialName={supplementPrefillName}
+          onClose={() => {
+            setShowSupplement(false);
+            setSupplementPrefillName(undefined);
+            enableWakeWord();
+          }}
+        />
+      )}
+
+      {/* Supplement schedule modal */}
+      {showSupplementSchedule && (
+        <SupplementScheduleModal
+          editSchedule={editingSupplementSchedule}
+          onClose={() => { setShowSupplementSchedule(false); setEditingSupplementSchedule(undefined); }}
         />
       )}
 

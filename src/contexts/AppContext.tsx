@@ -4,6 +4,7 @@ import type {
   ExtractedCheckIn, ExtractedMedication, ExtractedSymptom, ExtractedTrigger,
   FoodLog, MedicationLog, MedicationSchedule, NotificationPreferences, Note,
   Patient, PatientCondition, Symptom,
+  SupplementLog, SupplementSchedule,
   TrackingEntry, TriggerLog, View,
 } from '../types';
 import { computeDoseTimes } from '../utils/notifications';
@@ -30,6 +31,8 @@ interface State {
   notes: Note[];
   aiInsights: AIInsight[];
   medicationSchedules: MedicationSchedule[];
+  supplementLogs: SupplementLog[];
+  supplementSchedules: SupplementSchedule[];
   notificationPrefs: NotificationPreferences;
   selectedConditionId: string | null;
   view: View;
@@ -52,6 +55,8 @@ const initialState: State = {
   notes: [],
   aiInsights: [],
   medicationSchedules: [],
+  supplementLogs: [],
+  supplementSchedules: [],
   notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
   selectedConditionId: null,
   view: 'dashboard',
@@ -92,6 +97,11 @@ type Action =
   | { type: 'ADD_MED_SCHEDULE'; schedule: MedicationSchedule }
   | { type: 'UPDATE_MED_SCHEDULE'; id: string; patch: Partial<Omit<MedicationSchedule, 'id' | 'patientId' | 'createdAt'>> }
   | { type: 'DELETE_MED_SCHEDULE'; id: string }
+  | { type: 'ADD_SUPPLEMENT_LOG'; log: Omit<SupplementLog, 'id' | 'dayOfWeek' | 'createdAt'> }
+  | { type: 'DELETE_SUPPLEMENT_LOG'; id: string }
+  | { type: 'ADD_SUPPLEMENT_SCHEDULE'; schedule: SupplementSchedule }
+  | { type: 'UPDATE_SUPPLEMENT_SCHEDULE'; id: string; patch: Partial<Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt'>> }
+  | { type: 'DELETE_SUPPLEMENT_SCHEDULE'; id: string }
   | { type: 'SET_NOTIFICATION_PREFS'; prefs: Partial<NotificationPreferences> }
   | { type: 'SELECT_CONDITION'; id: string | null }
   | { type: 'SET_VIEW'; view: View }
@@ -132,6 +142,8 @@ function reducer(state: State, action: Action): State {
         medicationLogs: state.medicationLogs.filter(m => m.patientId !== action.id),
         foodLogs: state.foodLogs.filter(l => l.patientId !== action.id),
         medicationSchedules: state.medicationSchedules.filter(s => s.patientId !== action.id),
+        supplementLogs: (state.supplementLogs ?? []).filter(l => l.patientId !== action.id),
+        supplementSchedules: (state.supplementSchedules ?? []).filter(s => s.patientId !== action.id),
       };
     }
 
@@ -373,6 +385,33 @@ function reducer(state: State, action: Action): State {
     case 'DELETE_MED_SCHEDULE':
       return { ...state, medicationSchedules: state.medicationSchedules.filter(s => s.id !== action.id) };
 
+    case 'ADD_SUPPLEMENT_LOG': {
+      const log: SupplementLog = {
+        ...action.log,
+        id: `sl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        dayOfWeek: getDayOfWeek(action.log.date),
+        createdAt: Date.now(),
+      };
+      return { ...state, supplementLogs: [...(state.supplementLogs ?? []), log] };
+    }
+
+    case 'DELETE_SUPPLEMENT_LOG':
+      return { ...state, supplementLogs: (state.supplementLogs ?? []).filter(l => l.id !== action.id) };
+
+    case 'ADD_SUPPLEMENT_SCHEDULE':
+      return { ...state, supplementSchedules: [...(state.supplementSchedules ?? []), action.schedule] };
+
+    case 'UPDATE_SUPPLEMENT_SCHEDULE':
+      return {
+        ...state,
+        supplementSchedules: (state.supplementSchedules ?? []).map(s =>
+          s.id === action.id ? { ...s, ...action.patch, updatedAt: Date.now() } : s
+        ),
+      };
+
+    case 'DELETE_SUPPLEMENT_SCHEDULE':
+      return { ...state, supplementSchedules: (state.supplementSchedules ?? []).filter(s => s.id !== action.id) };
+
     case 'SET_NOTIFICATION_PREFS':
       return { ...state, notificationPrefs: { ...state.notificationPrefs, ...action.prefs } };
 
@@ -444,6 +483,8 @@ function migrateV1ToV2(): State | null {
       notes: [],
       aiInsights: [],
       medicationSchedules: [],
+      supplementLogs: [],
+      supplementSchedules: [],
       notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
       selectedConditionId: (v1.selectedConditionId as string | null) ?? null,
       view: 'dashboard',
@@ -470,6 +511,8 @@ function loadInitialState(): State {
           notes: saved.notes ?? [],
           aiInsights: saved.aiInsights ?? [],
           medicationSchedules: saved.medicationSchedules ?? [],
+          supplementLogs: saved.supplementLogs ?? [],
+          supplementSchedules: saved.supplementSchedules ?? [],
           notificationPrefs: saved.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS,
           selectedConditionId: saved.selectedConditionId ?? null,
           view: 'dashboard',
@@ -540,6 +583,11 @@ interface ContextValue {
   addMedSchedule: (input: Omit<MedicationSchedule, 'id' | 'patientId' | 'createdAt' | 'updatedAt' | 'doseTimes'>) => void;
   updateMedSchedule: (id: string, patch: Partial<Omit<MedicationSchedule, 'id' | 'patientId' | 'createdAt'>>) => void;
   deleteMedSchedule: (id: string) => void;
+  addSupplementLog: (log: Omit<SupplementLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => void;
+  deleteSupplementLog: (id: string) => void;
+  addSupplementSchedule: (input: Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt' | 'updatedAt'>) => void;
+  updateSupplementSchedule: (id: string, patch: Partial<Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt'>>) => void;
+  deleteSupplementSchedule: (id: string) => void;
   setNotificationPrefs: (prefs: Partial<NotificationPreferences>) => void;
   selectCondition: (id: string | null) => void;
   setView: (view: View) => void;
@@ -571,13 +619,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         notes: state.notes,
         aiInsights: state.aiInsights,
         medicationSchedules: state.medicationSchedules,
+        supplementLogs: state.supplementLogs,
+        supplementSchedules: state.supplementSchedules,
         notificationPrefs: state.notificationPrefs,
         selectedConditionId: state.selectedConditionId,
       }));
     } catch {
       // ignore quota errors
     }
-  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.notificationPrefs, state.selectedConditionId]);
+  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.notificationPrefs, state.selectedConditionId]);
 
   const createPatient = useCallback((name: string, conditionIds: string[], extra?: { dateOfBirth?: string; notes?: string; diagnosis?: string }) => {
     const id = `pat-${Date.now()}`;
@@ -993,6 +1043,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(DEMO_INJECT_KEY, today);
   }, [state.activePatientId]);
 
+  const addSupplementLog = useCallback(
+    (log: Omit<SupplementLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => {
+      const patientId = state.activePatientId;
+      if (!patientId) return;
+      dispatch({ type: 'ADD_SUPPLEMENT_LOG', log: { ...log, patientId } });
+    },
+    [state.activePatientId]
+  );
+
+  const deleteSupplementLog = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_SUPPLEMENT_LOG', id });
+  }, []);
+
+  const addSupplementSchedule = useCallback(
+    (input: Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt' | 'updatedAt'>) => {
+      const patientId = state.activePatientId;
+      if (!patientId) return;
+      const schedule: SupplementSchedule = {
+        ...input,
+        id: `ss-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        patientId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      dispatch({ type: 'ADD_SUPPLEMENT_SCHEDULE', schedule });
+    },
+    [state.activePatientId]
+  );
+
+  const updateSupplementSchedule = useCallback((id: string, patch: Partial<Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt'>>) => {
+    dispatch({ type: 'UPDATE_SUPPLEMENT_SCHEDULE', id, patch });
+  }, []);
+
+  const deleteSupplementSchedule = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_SUPPLEMENT_SCHEDULE', id });
+  }, []);
+
   const syncWithCloud = useCallback(async () => {
     await new Promise(r => setTimeout(r, 800));
   }, []);
@@ -1038,6 +1125,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addMedSchedule,
         updateMedSchedule,
         deleteMedSchedule,
+        addSupplementLog,
+        deleteSupplementLog,
+        addSupplementSchedule,
+        updateSupplementSchedule,
+        deleteSupplementSchedule,
         setNotificationPrefs,
         selectCondition,
         setView,
