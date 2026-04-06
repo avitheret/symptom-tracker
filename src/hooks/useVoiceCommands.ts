@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSpeechRecognition } from '../utils/speech';
-import type { MealType, MealPrefill } from '../types';
+import type { MealType, MealPrefill, SupplementTimeWindow, SupplementDatabaseEntry } from '../types';
 import { extractTimeFromTranscript } from '../utils/foodLogExtractor';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,9 +35,11 @@ export interface CommandMatch {
   label: string;
 }
 
-/** Spoken supplement name extracted from a voice command. */
+/** Spoken supplement data extracted from a voice command. */
 export interface SupplementPrefill {
-  name: string;   // e.g. "Vitamin D", "Magnesium"
+  name?: string;              // e.g. "Vitamin D", "Magnesium"
+  timeWindow?: SupplementTimeWindow;  // e.g. 'morning', 'breakfast'
+  quantity?: string;          // e.g. "1000mg", "2 capsules"
 }
 
 /** Spoken symptom + condition extracted from an inline voice command. */
@@ -53,6 +55,7 @@ export type { MealPrefill };
 
 interface UseVoiceCommandsOptions {
   onCommand: (command: VoiceCommand, label: string, prefill?: SymptomPrefill, mealPrefill?: MealPrefill, supplementPrefill?: SupplementPrefill) => void;
+  supplementDatabase?: SupplementDatabaseEntry[];
 }
 
 // ─── Debug logging ───────────────────────────────────────────────────────────
@@ -134,7 +137,7 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     label: 'Log Medication',
   },
   {
-    patterns: ['log supplement', 'add supplement', 'log vitamin', 'add vitamin', 'log mineral', 'add mineral', 'log probiotic', 'add probiotic', 'log omega', 'add omega', 'log magnesium', 'add magnesium', 'log zinc', 'add zinc', 'supplement'],
+    patterns: ['log supplement', 'add supplement', 'log vitamin', 'add vitamin', 'log mineral', 'add mineral', 'log probiotic', 'add probiotic', 'log omega', 'add omega', 'log magnesium', 'add magnesium', 'log zinc', 'add zinc', 'supplement', 'took my', 'took a', 'morning supplements', 'breakfast supplements', 'lunch supplements', 'dinner supplements', 'bedtime supplements'],
     command: 'LOG_SUPPLEMENT',
     label: 'Log Supplement',
   },
@@ -293,16 +296,75 @@ function extractMealPrefill(text: string): MealPrefill | null {
  */
 const INLINE_SUPPLEMENT_RE = /(?:log|add|record)\s+(?:a\s+)?(?:supplement\s+)?(.+?)(?:\s+supplement)?$/i;
 
-function extractSupplementPrefill(text: string): SupplementPrefill | null {
-  const t = text.trim();
+/** Time-window keywords for voice commands like "log morning supplements" */
+const TIME_WINDOW_KEYWORDS: Record<string, SupplementTimeWindow> = {
+  morning: 'morning',
+  breakfast: 'breakfast',
+  lunch: 'lunch',
+  dinner: 'dinner',
+  bed: 'bed',
+  bedtime: 'bed',
+  evening: 'dinner',
+};
+
+function extractSupplementPrefill(
+  text: string,
+  dbEntries?: SupplementDatabaseEntry[],
+): SupplementPrefill | null {
+  const t = text.trim().toLowerCase();
   if (!t) return null;
+
+  // Check for time-window patterns: "log morning supplements", "took my breakfast supplements"
+  for (const [keyword, tw] of Object.entries(TIME_WINDOW_KEYWORDS)) {
+    if (t.includes(keyword) && (t.includes('supplement') || t.includes('vitamin'))) {
+      return { timeWindow: tw };
+    }
+  }
+
+  // Check for "took my <name>" pattern — fuzzy match against database
+  const tookMatch = t.match(/(?:took|take|had)\s+(?:my\s+)?(.+)/i);
+  if (tookMatch && dbEntries?.length) {
+    const spoken = tookMatch[1].replace(/\b(supplement|vitamin|pill|capsule)s?\b/gi, '').trim();
+    if (spoken) {
+      const match = fuzzyMatchSupplement(spoken, dbEntries);
+      if (match) {
+        return { name: match.name, quantity: match.quantity };
+      }
+    }
+  }
+
+  // Standard regex extraction
   const m = t.match(INLINE_SUPPLEMENT_RE);
   if (!m) return null;
   const raw = m[1]
     .replace(/\b(supplement|vitamin|mineral)\b/gi, '')
     .trim();
   if (!raw) return null;
+
+  // Try matching against database entries for richer prefill
+  if (dbEntries?.length) {
+    const match = fuzzyMatchSupplement(raw, dbEntries);
+    if (match) {
+      return { name: match.name, quantity: match.quantity };
+    }
+  }
+
   return { name: toTitleCase(raw) };
+}
+
+/** Fuzzy-match spoken text against supplement database names. */
+function fuzzyMatchSupplement(
+  spoken: string,
+  entries: SupplementDatabaseEntry[],
+): SupplementDatabaseEntry | undefined {
+  const s = spoken.toLowerCase().trim();
+  if (s.length < 2) return undefined;
+  return (
+    entries.find(e => e.name.toLowerCase() === s) ??
+    entries.find(e => e.name.toLowerCase().startsWith(s)) ??
+    entries.find(e => s.startsWith(e.name.toLowerCase()) && e.name.length >= 3) ??
+    entries.find(e => e.name.toLowerCase().includes(s) || s.includes(e.name.toLowerCase()))
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -310,7 +372,7 @@ type AnySpeechRecognition = any;
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
+export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceCommandsOptions) {
   const SR = getSpeechRecognition();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -352,6 +414,9 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
   // startRecognition was created before the latest onCommand was set.
   const onCommandRef = useRef(onCommand);
   onCommandRef.current = onCommand;
+
+  const supplementDbRef = useRef(supplementDatabase);
+  supplementDbRef.current = supplementDatabase;
 
   stateRef.current = state;
 
@@ -496,9 +561,9 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
                 ? extractMealPrefill(afterWake) ?? undefined
                 : undefined;
               const wakeSupPrefill = afterWakeCmd.command === 'LOG_SUPPLEMENT'
-                ? extractSupplementPrefill(afterWake) ?? undefined
+                ? extractSupplementPrefill(afterWake, supplementDbRef.current) ?? undefined
                 : undefined;
-              const wakeSupLabel = wakeSupPrefill ? `Log ${wakeSupPrefill.name}` : afterWakeCmd.label;
+              const wakeSupLabel = wakeSupPrefill?.name ? `Log ${wakeSupPrefill.name}` : wakeSupPrefill?.timeWindow ? `Log ${wakeSupPrefill.timeWindow} supplements` : afterWakeCmd.label;
               onCommandRef.current(afterWakeCmd.command, wakeSupPrefill ? wakeSupLabel : afterWakeCmd.label, undefined, wakeMealPrefill, wakeSupPrefill);
               confirmTimerRef.current = setTimeout(() => {
                 if (stateRef.current === 'confirmed') {
@@ -570,8 +635,8 @@ export function useVoiceCommands({ onCommand }: UseVoiceCommandsOptions) {
             confirmCommand(match.command, match.label, undefined, mealPrefill);
           } else if (match.command === 'LOG_SUPPLEMENT') {
             // Extract supplement name from spoken phrase
-            const supPrefill = extractSupplementPrefill(partial) ?? undefined;
-            const label = supPrefill ? `Log ${supPrefill.name}` : match.label;
+            const supPrefill = extractSupplementPrefill(partial, supplementDbRef.current) ?? undefined;
+            const label = supPrefill?.name ? `Log ${supPrefill.name}` : supPrefill?.timeWindow ? `Log ${supPrefill.timeWindow} supplements` : match.label;
             confirmCommand(match.command, label, undefined, undefined, supPrefill);
           } else {
             confirmCommand(match.command, match.label);

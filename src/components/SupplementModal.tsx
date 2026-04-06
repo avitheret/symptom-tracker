@@ -8,10 +8,11 @@
  *      "save supplement", or "submit" to confirm. Tap "Save" is always available.
  *   4. 15 s no-speech timeout drops to idle (mic never stuck).
  */
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { FlaskConical, Mic, Square, Loader2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { SUPPLEMENT_FORMS } from '../types';
+import { SUPPLEMENT_FORMS, SUPPLEMENT_TIME_WINDOWS } from '../types';
+import type { SupplementTimeWindow } from '../types';
 import { Sheet, Button } from './ui';
 import { getSpeechRecognition } from '../utils/speech';
 import { extractSupplementLog } from '../utils/supplementExtractor';
@@ -25,6 +26,8 @@ function nowTime() {
 interface Props {
   onClose: () => void;
   initialName?: string;
+  initialTimeWindow?: SupplementTimeWindow;
+  initialQuantity?: string;
 }
 
 type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
@@ -34,18 +37,51 @@ const NO_SPEECH_MS = 15000;
 const STOP_PHRASES = ['log supplement', 'log it', 'done recording', 'submit'];
 const SAVE_PHRASES = ['save log', 'save it', 'save supplement', 'submit'];
 
-export default function SupplementModal({ onClose, initialName = '' }: Props) {
-  const { addSupplementLog } = useApp();
+export default function SupplementModal({ onClose, initialName = '', initialTimeWindow, initialQuantity }: Props) {
+  const { state, addSupplementLog } = useApp();
+
+  // Look up database entry for description display
+  const dbMatch = useMemo(() => {
+    if (!initialName) return undefined;
+    return (state.supplementDatabase ?? []).find(
+      e => e.patientId === state.activePatientId
+        && e.name.toLowerCase() === initialName.toLowerCase()
+    );
+  }, [initialName, state.supplementDatabase, state.activePatientId]);
 
   const [name,       setName]       = useState(initialName);
-  const [dosage,     setDosage]     = useState('');
+  const [dosage,     setDosage]     = useState(initialQuantity ?? dbMatch?.quantity ?? '');
   const [form,       setForm]       = useState('');
   const [date,       setDate]       = useState(todayStr());
-  const [time,       setTime]       = useState(nowTime());
+  const [time,       setTime]       = useState(
+    initialTimeWindow
+      ? SUPPLEMENT_TIME_WINDOWS[initialTimeWindow].start
+      : nowTime()
+  );
   const [notes,      setNotes]      = useState('');
   const [dictate,    setDictate]    = useState<DictateState>('idle');
   const [dictateErr, setDictateErr] = useState('');
   const [liveText,   setLiveText]   = useState('');
+
+  // Track description from database match (updates when name changes)
+  const description = useMemo(() => {
+    const match = (state.supplementDatabase ?? []).find(
+      e => e.patientId === state.activePatientId
+        && e.name.toLowerCase() === name.toLowerCase()
+    );
+    return match?.description ?? '';
+  }, [name, state.supplementDatabase, state.activePatientId]);
+
+  // Auto-fill quantity from database when name matches and dosage is empty
+  useEffect(() => {
+    const match = (state.supplementDatabase ?? []).find(
+      e => e.patientId === state.activePatientId
+        && e.name.toLowerCase() === name.toLowerCase()
+    );
+    if (match && !dosage) {
+      setDosage(match.quantity);
+    }
+  }, [name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef  = useRef<any>(null);
@@ -355,6 +391,18 @@ export default function SupplementModal({ onClose, initialName = '' }: Props) {
             className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px] bg-white"
           />
         </div>
+
+        {/* ── Description (read-only from database) ────── */}
+        {description && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Description <span className="text-slate-400 font-normal">(from list)</span>
+            </label>
+            <div className="w-full border border-slate-200 bg-slate-50 rounded-xl px-3 py-3 text-sm text-slate-600 min-h-[48px]">
+              {description}
+            </div>
+          </div>
+        )}
 
         {/* ── Dosage & Form ─────────────────────────────── */}
         <div className="grid grid-cols-2 gap-3">

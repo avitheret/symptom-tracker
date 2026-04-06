@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "name": "symptom-tracker",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": ["-C", "/Users/avi/Library/CloudStorage/Dropbox/claude/symptom-tracker", "/opt/homebrew/bin/node", "node_modules/vite/bin/vite.js", "--port", "5173"],
       "port": 5173
     }
   ]

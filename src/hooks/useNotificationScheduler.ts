@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { SUPPLEMENT_TIME_WINDOWS } from '../types';
 import {
   isNotificationSupported,
   getNotificationPermission,
@@ -11,13 +12,8 @@ import {
 
 /**
  * Runs a 60-second interval that fires browser notifications
- * for medication doses that are due. Mount once at the app level.
- *
- * Only fires when:
- * - Notifications are supported + granted + enabled
- * - Schedule is active + has notificationsEnabled
- * - Current time is within the reminder window of a dose time
- * - Notification hasn't already been sent today for this dose
+ * for medication doses that are due AND supplement database entries
+ * whose time window is active. Mount once at the app level.
  */
 export function useNotificationScheduler() {
   const { state } = useApp();
@@ -34,6 +30,7 @@ export function useNotificationScheduler() {
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const windowMins = state.notificationPrefs.reminderWindowMinutes;
 
+      // ── Medication schedule notifications ──────────────────────────────
       const activeSchedules = state.medicationSchedules.filter(
         s => s.patientId === state.activePatientId
           && s.status === 'active'
@@ -51,6 +48,41 @@ export function useNotificationScheduler() {
           }
         }
       }
+
+      // ── Supplement database notifications ──────────────────────────────
+      const dbEntries = (state.supplementDatabase ?? []).filter(
+        e => e.patientId === state.activePatientId
+      );
+
+      for (const entry of dbEntries) {
+        const tw = SUPPLEMENT_TIME_WINDOWS[entry.timeWindow];
+        if (!tw) continue;
+
+        // Check if current time is within the window (start to end)
+        const [sh, sm] = tw.start.split(':').map(Number);
+        const [eh, em] = tw.end.split(':').map(Number);
+        const [ch, cm] = currentTime.split(':').map(Number);
+        const currentMins = ch * 60 + cm;
+        const startMins = sh * 60 + sm;
+        const endMins = eh * 60 + em;
+
+        if (currentMins < startMins || currentMins > endMins) continue;
+
+        // Already sent today for this entry?
+        if (wasNotificationSent(today, entry.name, tw.start)) continue;
+
+        // Already logged today?
+        const alreadyLogged = (state.supplementLogs ?? []).some(
+          l => l.patientId === state.activePatientId
+            && l.date === today
+            && l.name.toLowerCase() === entry.name.toLowerCase()
+        );
+        if (alreadyLogged) continue;
+
+        // Fire notification
+        showMedicationNotification(entry.name, entry.quantity, tw.start);
+        markNotificationSent(today, entry.name, tw.start);
+      }
     }
 
     // Check immediately, then every 60 seconds
@@ -65,5 +97,7 @@ export function useNotificationScheduler() {
     state.notificationPrefs.reminderWindowMinutes,
     state.medicationSchedules,
     state.activePatientId,
+    state.supplementDatabase,
+    state.supplementLogs,
   ]);
 }

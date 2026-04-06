@@ -3,10 +3,11 @@ import type {
   AIInsight, Condition, DailyCheckIn, ExtractionResult, ExtractionStatus,
   ExtractedCheckIn, ExtractedMedication, ExtractedSymptom, ExtractedTrigger,
   FoodLog, MedicationLog, MedicationSchedule, NotificationPreferences, Note,
-  Patient, PatientCondition, Symptom,
+  Patient, PatientCondition, SupplementDatabaseEntry, Symptom,
   SupplementLog, SupplementSchedule,
   TrackingEntry, TriggerLog, View,
 } from '../types';
+import { CLOUD_ENABLED, supabase } from '../lib/supabase';
 import { computeDoseTimes } from '../utils/notifications';
 import { logActivity, ACTIONS } from '../utils/activityLogger';
 import { PREDEFINED_CONDITIONS } from '../data/medicalData';
@@ -33,6 +34,7 @@ interface State {
   medicationSchedules: MedicationSchedule[];
   supplementLogs: SupplementLog[];
   supplementSchedules: SupplementSchedule[];
+  supplementDatabase: SupplementDatabaseEntry[];
   notificationPrefs: NotificationPreferences;
   selectedConditionId: string | null;
   view: View;
@@ -57,6 +59,7 @@ const initialState: State = {
   medicationSchedules: [],
   supplementLogs: [],
   supplementSchedules: [],
+  supplementDatabase: [],
   notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
   selectedConditionId: null,
   view: 'dashboard',
@@ -102,6 +105,8 @@ type Action =
   | { type: 'ADD_SUPPLEMENT_SCHEDULE'; schedule: SupplementSchedule }
   | { type: 'UPDATE_SUPPLEMENT_SCHEDULE'; id: string; patch: Partial<Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt'>> }
   | { type: 'DELETE_SUPPLEMENT_SCHEDULE'; id: string }
+  | { type: 'SET_SUPPLEMENT_DATABASE'; entries: SupplementDatabaseEntry[] }
+  | { type: 'DELETE_SUPPLEMENT_DATABASE_ENTRY'; id: string }
   | { type: 'SET_NOTIFICATION_PREFS'; prefs: Partial<NotificationPreferences> }
   | { type: 'SELECT_CONDITION'; id: string | null }
   | { type: 'SET_VIEW'; view: View }
@@ -144,6 +149,7 @@ function reducer(state: State, action: Action): State {
         medicationSchedules: state.medicationSchedules.filter(s => s.patientId !== action.id),
         supplementLogs: (state.supplementLogs ?? []).filter(l => l.patientId !== action.id),
         supplementSchedules: (state.supplementSchedules ?? []).filter(s => s.patientId !== action.id),
+        supplementDatabase: (state.supplementDatabase ?? []).filter(e => e.patientId !== action.id),
       };
     }
 
@@ -412,6 +418,12 @@ function reducer(state: State, action: Action): State {
     case 'DELETE_SUPPLEMENT_SCHEDULE':
       return { ...state, supplementSchedules: (state.supplementSchedules ?? []).filter(s => s.id !== action.id) };
 
+    case 'SET_SUPPLEMENT_DATABASE':
+      return { ...state, supplementDatabase: action.entries };
+
+    case 'DELETE_SUPPLEMENT_DATABASE_ENTRY':
+      return { ...state, supplementDatabase: state.supplementDatabase.filter(e => e.id !== action.id) };
+
     case 'SET_NOTIFICATION_PREFS':
       return { ...state, notificationPrefs: { ...state.notificationPrefs, ...action.prefs } };
 
@@ -485,6 +497,7 @@ function migrateV1ToV2(): State | null {
       medicationSchedules: [],
       supplementLogs: [],
       supplementSchedules: [],
+      supplementDatabase: [],
       notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
       selectedConditionId: (v1.selectedConditionId as string | null) ?? null,
       view: 'dashboard',
@@ -513,6 +526,7 @@ function loadInitialState(): State {
           medicationSchedules: saved.medicationSchedules ?? [],
           supplementLogs: saved.supplementLogs ?? [],
           supplementSchedules: saved.supplementSchedules ?? [],
+          supplementDatabase: saved.supplementDatabase ?? [],
           notificationPrefs: saved.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS,
           selectedConditionId: saved.selectedConditionId ?? null,
           view: 'dashboard',
@@ -588,6 +602,8 @@ interface ContextValue {
   addSupplementSchedule: (input: Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt' | 'updatedAt'>) => void;
   updateSupplementSchedule: (id: string, patch: Partial<Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt'>>) => void;
   deleteSupplementSchedule: (id: string) => void;
+  loadSupplementDatabase: (patientId: string) => Promise<void>;
+  deleteSupplementDatabaseEntry: (id: string) => Promise<void>;
   setNotificationPrefs: (prefs: Partial<NotificationPreferences>) => void;
   selectCondition: (id: string | null) => void;
   setView: (view: View) => void;
@@ -621,13 +637,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         medicationSchedules: state.medicationSchedules,
         supplementLogs: state.supplementLogs,
         supplementSchedules: state.supplementSchedules,
+        supplementDatabase: state.supplementDatabase,
         notificationPrefs: state.notificationPrefs,
         selectedConditionId: state.selectedConditionId,
       }));
     } catch {
       // ignore quota errors
     }
-  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.notificationPrefs, state.selectedConditionId]);
+  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.supplementDatabase, state.notificationPrefs, state.selectedConditionId]);
 
   const createPatient = useCallback((name: string, conditionIds: string[], extra?: { dateOfBirth?: string; notes?: string; diagnosis?: string }) => {
     const id = `pat-${Date.now()}`;
@@ -1080,6 +1097,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'DELETE_SUPPLEMENT_SCHEDULE', id });
   }, []);
 
+  const loadSupplementDatabase = useCallback(async (patientId: string) => {
+    if (!CLOUD_ENABLED || !supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('supplement_database')
+        .select('id, patient_id, name, time_window, quantity, description')
+        .eq('patient_id', patientId);
+      if (error) { console.error('loadSupplementDatabase:', error); return; }
+      const entries: SupplementDatabaseEntry[] = (data ?? []).map(r => ({
+        id: r.id,
+        patientId: r.patient_id,
+        name: r.name,
+        timeWindow: r.time_window,
+        quantity: r.quantity,
+        description: r.description,
+      }));
+      dispatch({ type: 'SET_SUPPLEMENT_DATABASE', entries });
+    } catch (err) {
+      console.error('loadSupplementDatabase:', err);
+    }
+  }, []);
+
+  const deleteSupplementDatabaseEntry = useCallback(async (id: string) => {
+    if (CLOUD_ENABLED && supabase) {
+      try {
+        await supabase.from('supplement_database').delete().eq('id', id);
+      } catch (err) {
+        console.error('deleteSupplementDatabaseEntry:', err);
+      }
+    }
+    dispatch({ type: 'DELETE_SUPPLEMENT_DATABASE_ENTRY', id });
+  }, []);
+
   const syncWithCloud = useCallback(async () => {
     await new Promise(r => setTimeout(r, 800));
   }, []);
@@ -1130,6 +1180,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addSupplementSchedule,
         updateSupplementSchedule,
         deleteSupplementSchedule,
+        loadSupplementDatabase,
+        deleteSupplementDatabaseEntry,
         setNotificationPrefs,
         selectCondition,
         setView,

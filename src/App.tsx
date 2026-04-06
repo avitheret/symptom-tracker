@@ -52,7 +52,7 @@ function fuzzyMatch<T extends { name: string }>(items: T[], hint: string): T | u
 }
 
 function AppContent() {
-  const { state, setView, getPatientConditions, confirmNoteExtraction, updateNoteExtraction, addEntry } = useApp();
+  const { state, setView, getPatientConditions, confirmNoteExtraction, updateNoteExtraction, addEntry, loadSupplementDatabase } = useApp();
   const { isAuthenticated, needsOnboarding, isLoading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -74,6 +74,8 @@ function AppContent() {
   const [editingSchedule, setEditingSchedule] = useState<MedicationSchedule | undefined>();
   const [showSupplement, setShowSupplement] = useState(false);
   const [supplementPrefillName, setSupplementPrefillName] = useState<string | undefined>();
+  const [supplementPrefillTimeWindow, setSupplementPrefillTimeWindow] = useState<import('./types').SupplementTimeWindow | undefined>();
+  const [supplementPrefillQuantity, setSupplementPrefillQuantity] = useState<string | undefined>();
   const [showSupplementSchedule, setShowSupplementSchedule] = useState(false);
   const [editingSupplementSchedule, setEditingSupplementSchedule] = useState<SupplementSchedule | undefined>();
   const [toastVisible, setToastVisible] = useState(false);
@@ -183,6 +185,8 @@ function AppContent() {
       case 'LOG_SUPPLEMENT':
         disableWakeWord();
         setSupplementPrefillName(supplementPrefill?.name);
+        setSupplementPrefillTimeWindow(supplementPrefill?.timeWindow);
+        setSupplementPrefillQuantity(supplementPrefill?.quantity);
         setShowSupplement(true);
         break;
       case 'OPEN_SUPPLEMENTS':
@@ -218,6 +222,7 @@ function AppContent() {
 
   const { state: voiceState, manualActivate, disableWakeWord, enableWakeWord } = useVoiceCommands({
     onCommand: handleVoiceCommand,
+    supplementDatabase: state.supplementDatabase,
   });
 
   // ── Medication notification scheduler ─────────────────────────────────────
@@ -225,6 +230,13 @@ function AppContent() {
 
   // ── Sync medication schedules to Supabase (for push notifications) ──────
   useMedScheduleSync();
+
+  // ── Load supplement database from Supabase on auth + patient change ──────
+  useEffect(() => {
+    if (isAuthenticated && state.activePatientId) {
+      loadSupplementDatabase(state.activePatientId);
+    }
+  }, [isAuthenticated, state.activePatientId, loadSupplementDatabase]);
 
   // ── Note extraction handlers ────────────────────────────────────────────────
   const runExtraction = useCallback((noteId: string, noteText: string, date?: Date) => {
@@ -304,14 +316,14 @@ function AppContent() {
                 </p>
               </div>
               <button
-                onClick={() => { setSupplementPrefillName(undefined); setShowSupplement(true); }}
+                onClick={() => { setSupplementPrefillName(undefined); setSupplementPrefillTimeWindow(undefined); setSupplementPrefillQuantity(undefined); setShowSupplement(true); }}
                 className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 active:bg-teal-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-colors min-h-[44px]"
               >
                 + Log Supplement
               </button>
             </div>
             <Supplements
-              onOpenSupplementModal={() => { setSupplementPrefillName(undefined); setShowSupplement(true); }}
+              onOpenSupplementModal={() => { setSupplementPrefillName(undefined); setSupplementPrefillTimeWindow(undefined); setSupplementPrefillQuantity(undefined); setShowSupplement(true); }}
               onOpenScheduleModal={() => { setEditingSupplementSchedule(undefined); setShowSupplementSchedule(true); }}
               onEditSchedule={(s) => { setEditingSupplementSchedule(s); setShowSupplementSchedule(true); }}
             />
@@ -410,9 +422,13 @@ function AppContent() {
       {showSupplement && (
         <SupplementModal
           initialName={supplementPrefillName}
+          initialTimeWindow={supplementPrefillTimeWindow}
+          initialQuantity={supplementPrefillQuantity}
           onClose={() => {
             setShowSupplement(false);
             setSupplementPrefillName(undefined);
+            setSupplementPrefillTimeWindow(undefined);
+            setSupplementPrefillQuantity(undefined);
             enableWakeWord();
           }}
         />

@@ -1,12 +1,25 @@
 /**
- * Supplements — top-level section showing supplement schedule + log.
- * Mirrors MedicationTab structure.
+ * Supplements — top-level section with tabbed view:
+ *   Log  |  Schedules  |  My List
  */
 import { useMemo, useState } from 'react';
-import { FlaskConical, Trash2, Download, ChevronDown, Plus } from 'lucide-react';
+import { FlaskConical, Trash2, Download, ChevronDown, Plus, CalendarClock, Database } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import type { SupplementLog, SupplementSchedule } from '../types';
 import SupplementScheduleList from './SupplementScheduleList';
+import SupplementDatabase from './SupplementDatabase';
+import { TabBar } from './ui';
+import type { TabItem } from './ui';
+
+// ── Tab definitions ──────────────────────────────────────────────────────────
+
+type SupTab = 'log' | 'schedules' | 'mylist';
+
+const TABS: TabItem<SupTab>[] = [
+  { id: 'log',       label: 'Log',       icon: <FlaskConical size={14} /> },
+  { id: 'schedules', label: 'Schedules', icon: <CalendarClock size={14} /> },
+  { id: 'mylist',    label: 'My List',   icon: <Database size={14} /> },
+];
 
 // ── CSV export ────────────────────────────────────────────────────────────────
 
@@ -87,15 +100,9 @@ function SupLogList({ logs, onDelete }: { logs: SupplementLog[]; onDelete: (id: 
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+// ── Log tab content ───────────────────────────────────────────────────────────
 
-interface Props {
-  onOpenSupplementModal?: () => void;
-  onOpenScheduleModal?: () => void;
-  onEditSchedule?: (schedule: SupplementSchedule) => void;
-}
-
-export default function Supplements({ onOpenSupplementModal, onOpenScheduleModal, onEditSchedule }: Props) {
+function LogTab({ onOpenSupplementModal }: { onOpenSupplementModal?: () => void }) {
   const { state, deleteSupplementLog } = useApp();
 
   const logs = useMemo(
@@ -109,7 +116,6 @@ export default function Supplements({ onOpenSupplementModal, onOpenScheduleModal
     [state.supplementLogs, state.activePatientId]
   );
 
-  // Summary stats
   const stats = useMemo(() => {
     if (logs.length === 0) return null;
     const nameCounts: Record<string, number> = {};
@@ -122,47 +128,29 @@ export default function Supplements({ onOpenSupplementModal, onOpenScheduleModal
 
   if (logs.length === 0) {
     return (
-      <div className="space-y-4">
-        {onOpenScheduleModal && (
-          <SupplementScheduleList
-            onAdd={onOpenScheduleModal}
-            onEdit={s => onEditSchedule?.(s)}
-          />
-        )}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-10 text-center space-y-3">
-          <div className="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto">
-            <FlaskConical size={24} className="text-teal-400" />
-          </div>
-          <p className="text-sm font-semibold text-slate-700">No supplements logged yet</p>
-          <p className="text-xs text-slate-400 max-w-[260px] mx-auto leading-relaxed">
-            Say "Hey Tracker, log vitamin D" or use the button below to record a supplement.
-          </p>
-          {onOpenSupplementModal && (
-            <button
-              onClick={onOpenSupplementModal}
-              className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors mt-2"
-            >
-              <Plus size={15} />
-              Log Supplement
-            </button>
-          )}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-10 text-center space-y-3">
+        <div className="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto">
+          <FlaskConical size={24} className="text-teal-400" />
         </div>
+        <p className="text-sm font-semibold text-slate-700">No supplements logged yet</p>
+        <p className="text-xs text-slate-400 max-w-[260px] mx-auto leading-relaxed">
+          Say "Hey Tracker, log vitamin D" or use the button below to record a supplement.
+        </p>
+        {onOpenSupplementModal && (
+          <button
+            onClick={onOpenSupplementModal}
+            className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors mt-2"
+          >
+            <Plus size={15} />
+            Log Supplement
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-
-      {/* Schedule section */}
-      {onOpenScheduleModal && (
-        <SupplementScheduleList
-          onAdd={onOpenScheduleModal}
-          onEdit={s => onEditSchedule?.(s)}
-        />
-      )}
-
-      {/* Summary stats */}
       {stats && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 text-center">
@@ -178,7 +166,6 @@ export default function Supplements({ onOpenSupplementModal, onOpenScheduleModal
         </div>
       )}
 
-      {/* Export + label */}
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-slate-700">{logs.length} log{logs.length !== 1 ? 's' : ''}</p>
         <button
@@ -189,9 +176,40 @@ export default function Supplements({ onOpenSupplementModal, onOpenScheduleModal
         </button>
       </div>
 
-      {/* Log list */}
       <SupLogList logs={logs} onDelete={deleteSupplementLog} />
+    </div>
+  );
+}
 
+// ── Main component ─────────────────────────────────────────────────────────────
+
+interface Props {
+  onOpenSupplementModal?: () => void;
+  onOpenScheduleModal?: () => void;
+  onEditSchedule?: (schedule: SupplementSchedule) => void;
+}
+
+export default function Supplements({ onOpenSupplementModal, onOpenScheduleModal, onEditSchedule }: Props) {
+  const [tab, setTab] = useState<SupTab>('log');
+
+  return (
+    <div className="space-y-4">
+      <TabBar tabs={TABS} active={tab} onChange={setTab} compact />
+
+      {tab === 'log' && (
+        <LogTab onOpenSupplementModal={onOpenSupplementModal} />
+      )}
+
+      {tab === 'schedules' && onOpenScheduleModal && (
+        <SupplementScheduleList
+          onAdd={onOpenScheduleModal}
+          onEdit={s => onEditSchedule?.(s)}
+        />
+      )}
+
+      {tab === 'mylist' && (
+        <SupplementDatabase />
+      )}
     </div>
   );
 }
