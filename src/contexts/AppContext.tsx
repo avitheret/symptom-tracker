@@ -603,6 +603,7 @@ interface ContextValue {
   updateSupplementSchedule: (id: string, patch: Partial<Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt'>>) => void;
   deleteSupplementSchedule: (id: string) => void;
   loadSupplementDatabase: (patientId: string) => Promise<void>;
+  setSupplementDatabase: (entries: SupplementDatabaseEntry[]) => void;
   deleteSupplementDatabaseEntry: (id: string) => Promise<void>;
   setNotificationPrefs: (prefs: Partial<NotificationPreferences>) => void;
   selectCondition: (id: string | null) => void;
@@ -1119,6 +1120,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const setSupplementDatabase = useCallback((entries: SupplementDatabaseEntry[]) => {
+    dispatch({ type: 'SET_SUPPLEMENT_DATABASE', entries });
+  }, []);
+
   const deleteSupplementDatabaseEntry = useCallback(async (id: string) => {
     if (CLOUD_ENABLED && supabase) {
       try {
@@ -1181,6 +1186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateSupplementSchedule,
         deleteSupplementSchedule,
         loadSupplementDatabase,
+        setSupplementDatabase,
         deleteSupplementDatabaseEntry,
         setNotificationPrefs,
         selectCondition,

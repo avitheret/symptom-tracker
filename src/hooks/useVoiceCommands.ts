@@ -137,7 +137,7 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     label: 'Log Medication',
   },
   {
-    patterns: ['log supplement', 'add supplement', 'log vitamin', 'add vitamin', 'log mineral', 'add mineral', 'log probiotic', 'add probiotic', 'log omega', 'add omega', 'log magnesium', 'add magnesium', 'log zinc', 'add zinc', 'supplement', 'took my', 'took a', 'morning supplements', 'breakfast supplements', 'lunch supplements', 'dinner supplements', 'bedtime supplements'],
+    patterns: ['log supplement', 'log supplements', 'add supplement', 'add supplements', 'log vitamin', 'add vitamin', 'log mineral', 'add mineral', 'log probiotic', 'log probiotics', 'add probiotic', 'add probiotics', 'log omega', 'add omega', 'log magnesium', 'add magnesium', 'log zinc', 'add zinc', 'log vitamin d', 'log vitamin c', 'supplement', 'took my vitamins', 'took my vitamin', 'took my supplement', 'took my supplements', 'took supplements', 'took my', 'took a', 'log my pills', 'add my pills', 'morning supplements', 'breakfast supplements', 'lunch supplements', 'dinner supplements', 'bedtime supplements'],
     command: 'LOG_SUPPLEMENT',
     label: 'Log Supplement',
   },

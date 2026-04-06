@@ -1,6 +1,8 @@
 /**
- * SupplementDatabaseUpload — parse an Excel file and upsert rows
- * into the Supabase `supplement_database` table.
+ * SupplementDatabaseUpload — parse an Excel file and store rows
+ * into the supplement database (Supabase when cloud-enabled, localStorage otherwise).
+ *
+ * Also creates SupplementSchedule entries for each imported row (with duplicate detection).
  *
  * Expected columns (by position, not header name):
  *   A: name   B: time_window display text   C: quantity   D: description
@@ -12,7 +14,7 @@ import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import { CLOUD_ENABLED, supabase } from '../lib/supabase';
 import { Card } from './ui';
-import type { SupplementTimeWindow } from '../types';
+import type { SupplementTimeWindow, SupplementDatabaseEntry } from '../types';
 
 // ── Time-window mapping (case-insensitive partial match) ────────────────────
 
@@ -32,100 +34,156 @@ function parseTimeWindow(raw: string): SupplementTimeWindow | null {
   return null;
 }
 
+interface ParsedRow {
+  name: string;
+  timeWindow: SupplementTimeWindow;
+  quantity: string;
+  description: string;
+}
+
+function parseExcelRows(data: ArrayBuffer): { rows: ParsedRow[]; skipped: number } {
+  const wb = XLSX.read(data);
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rawRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+  const dataRows = rawRows.slice(1); // skip header
+
+  const rows: ParsedRow[] = [];
+  let skipped = 0;
+
+  for (const row of dataRows) {
+    const name = String(row[0] ?? '').trim();
+    const twRaw = String(row[1] ?? '').trim();
+    const quantity = String(row[2] ?? '').trim();
+    const description = String(row[3] ?? '').trim();
+
+    if (!name || !twRaw || !quantity) { skipped++; continue; }
+
+    const timeWindow = parseTimeWindow(twRaw);
+    if (!timeWindow) { skipped++; continue; }
+
+    rows.push({ name, timeWindow, quantity, description });
+  }
+
+  return { rows, skipped };
+}
+
 interface Props {
   onDone: () => void;
 }
 
 export default function SupplementDatabaseUpload({ onDone }: Props) {
-  const { state, loadSupplementDatabase } = useApp();
+  const { state, addSupplementSchedule, setSupplementDatabase, loadSupplementDatabase } = useApp();
   const { user } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [status, setStatus] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  if (!CLOUD_ENABLED) {
-    return (
-      <Card className="p-6 text-center space-y-2">
-        <p className="text-sm font-semibold text-slate-700">Cloud sync required</p>
-        <p className="text-xs text-slate-400">
-          Supplement database upload requires cloud mode. Set Supabase environment variables to enable.
-        </p>
-      </Card>
-    );
+  // ── Cloud upload path ──────────────────────────────────────────────────────
+  async function handleCloudUpload(parsed: ParsedRow[]) {
+    if (!user || !supabase || !state.activePatientId) return 0;
+
+    const upsertRows = parsed.map(r => ({
+      user_id: user.id,
+      patient_id: state.activePatientId!,
+      name: r.name,
+      time_window: r.timeWindow,
+      quantity: r.quantity,
+      description: r.description,
+    }));
+
+    const { error } = await supabase
+      .from('supplement_database')
+      .upsert(upsertRows, { onConflict: 'user_id,patient_id,name' });
+
+    if (error) throw new Error(error.message);
+
+    await loadSupplementDatabase(state.activePatientId!);
+    return upsertRows.length;
   }
 
+  // ── Local-only upload path ─────────────────────────────────────────────────
+  function handleLocalUpload(parsed: ParsedRow[]) {
+    if (!state.activePatientId) return 0;
+
+    const existing = state.supplementDatabase ?? [];
+    const merged = [...existing];
+
+    for (const row of parsed) {
+      const idx = merged.findIndex(
+        e => e.patientId === state.activePatientId && e.name.toLowerCase() === row.name.toLowerCase(),
+      );
+      const entry: SupplementDatabaseEntry = {
+        id: idx >= 0 ? merged[idx].id : `sdb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        patientId: state.activePatientId!,
+        name: row.name,
+        timeWindow: row.timeWindow,
+        quantity: row.quantity,
+        description: row.description,
+      };
+      if (idx >= 0) {
+        merged[idx] = entry;
+      } else {
+        merged.push(entry);
+      }
+    }
+
+    setSupplementDatabase(merged);
+    return parsed.length;
+  }
+
+  // ── Create SupplementSchedule entries (duplicate-aware) ────────────────────
+  function createSchedulesFromImport(parsed: ParsedRow[]) {
+    if (!state.activePatientId) return 0;
+
+    const existingSchedules = (state.supplementSchedules ?? []).filter(
+      s => s.patientId === state.activePatientId,
+    );
+
+    let created = 0;
+    for (const row of parsed) {
+      const isDup = existingSchedules.some(
+        s => s.name.toLowerCase() === row.name.toLowerCase() && s.timeWindow === row.timeWindow,
+      );
+      if (isDup) continue;
+
+      addSupplementSchedule({
+        name: row.name,
+        frequency: 'daily',
+        status: 'active',
+        timeWindow: row.timeWindow,
+        quantity: row.quantity,
+        description: row.description,
+      });
+      created++;
+    }
+    return created;
+  }
+
+  // ── Main handler ───────────────────────────────────────────────────────────
   async function handleUpload() {
     const file = fileRef.current?.files?.[0];
-    if (!file || !user || !supabase || !state.activePatientId) return;
+    if (!file || !state.activePatientId) return;
 
     setUploading(true);
     setStatus(null);
 
     try {
       const data = await file.arrayBuffer();
-      const wb = XLSX.read(data);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-
-      // Skip header row
-      const dataRows = rows.slice(1);
+      const { rows: parsed, skipped } = parseExcelRows(data);
 
       let imported = 0;
-      let skipped = 0;
-      const upsertRows: Array<{
-        user_id: string;
-        patient_id: string;
-        name: string;
-        time_window: SupplementTimeWindow;
-        quantity: string;
-        description: string;
-      }> = [];
-
-      for (const row of dataRows) {
-        const name = String(row[0] ?? '').trim();
-        const twRaw = String(row[1] ?? '').trim();
-        const quantity = String(row[2] ?? '').trim();
-        const description = String(row[3] ?? '').trim();
-
-        if (!name || !twRaw || !quantity) {
-          skipped++;
-          continue;
-        }
-
-        const timeWindow = parseTimeWindow(twRaw);
-        if (!timeWindow) {
-          skipped++;
-          continue;
-        }
-
-        upsertRows.push({
-          user_id: user.id,
-          patient_id: state.activePatientId,
-          name,
-          time_window: timeWindow,
-          quantity,
-          description,
-        });
+      if (CLOUD_ENABLED && user && supabase) {
+        imported = await handleCloudUpload(parsed);
+      } else {
+        imported = handleLocalUpload(parsed);
       }
 
-      if (upsertRows.length > 0) {
-        const { error } = await supabase
-          .from('supplement_database')
-          .upsert(upsertRows, { onConflict: 'user_id,patient_id,name' });
-
-        if (error) {
-          setStatus(`Error: ${error.message}`);
-          setUploading(false);
-          return;
-        }
-        imported = upsertRows.length;
-      }
-
-      await loadSupplementDatabase(state.activePatientId);
+      const schedulesCreated = createSchedulesFromImport(parsed);
 
       const parts: string[] = [];
-      if (imported > 0) parts.push(`${imported} row${imported !== 1 ? 's' : ''} imported`);
+      if (imported > 0) parts.push(`${imported} supplement${imported !== 1 ? 's' : ''} imported`);
+      if (schedulesCreated > 0) parts.push(`${schedulesCreated} schedule${schedulesCreated !== 1 ? 's' : ''} created`);
       if (skipped > 0) parts.push(`${skipped} skipped`);
       setStatus(parts.join(', ') || 'No data found');
 
@@ -133,7 +191,7 @@ export default function SupplementDatabaseUpload({ onDone }: Props) {
         setTimeout(onDone, 1500);
       }
     } catch (err) {
-      setStatus(`Error parsing file: ${err instanceof Error ? err.message : 'unknown'}`);
+      setStatus(`Error: ${err instanceof Error ? err.message : 'unknown'}`);
     }
 
     setUploading(false);

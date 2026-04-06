@@ -384,6 +384,9 @@ export interface SupplementSchedule {
   reminderTime?: string;      // "08:00" (HH:MM) — optional reminder time
   status: 'active' | 'paused';
   notes?: string;
+  timeWindow?: SupplementTimeWindow;
+  quantity?: string;
+  description?: string;
   createdAt: number;
   updatedAt: number;
 }
