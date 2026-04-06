@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Pause, Play, Clock } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { SUPPLEMENT_FREQUENCY_LABELS, SUPPLEMENT_TIME_WINDOWS } from '../types';
+import { SUPPLEMENT_TIME_WINDOWS } from '../types';
 import type { SupplementSchedule, SupplementTimeWindow } from '../types';
 import { SectionHeader, Card, Badge, EmptyState, Button } from './ui';
 
@@ -92,8 +92,7 @@ export default function SupplementScheduleList({ onAdd, onEdit }: Props) {
                     </div>
 
                     <p className="text-xs text-slate-400 mt-1.5">
-                      {SUPPLEMENT_FREQUENCY_LABELS[schedule.frequency]}
-                      {schedule.reminderTime && ` · ${schedule.reminderTime}`}
+                      {schedule.timeWindow ? SUPPLEMENT_TIME_WINDOWS[schedule.timeWindow].label : 'No timing set'}
                     </p>
 
                     {schedule.description && (

@@ -5,8 +5,8 @@
 import { useMemo } from 'react';
 import { Check, AlertTriangle, Plus, FlaskConical } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { SUPPLEMENT_FREQUENCY_LABELS } from '../types';
-import type { SupplementFrequency } from '../types';
+import { SUPPLEMENT_TIME_WINDOWS } from '../types';
+import type { SupplementTimeWindow } from '../types';
 import { SectionHeader, Card, Badge } from './ui';
 
 type DoseStatus = 'upcoming' | 'due' | 'overdue' | 'taken';
@@ -18,33 +18,19 @@ interface DoseItem {
   doseTime: string;
   status: DoseStatus;
   form?: string;
-  frequency: SupplementFrequency;
+  timeWindow?: SupplementTimeWindow;
 }
 
 interface Props {
   onAddSchedule: () => void;
 }
 
-/** Map frequency to dose count per day. */
-function dosesPerDay(freq: SupplementFrequency): number {
-  switch (freq) {
-    case 'daily':       return 1;
-    case 'twice_daily': return 2;
-    case 'weekly':      return 1;
-    case 'as_needed':   return 0;
+/** Get the dose time for a schedule — uses timeWindow start, falls back to reminderTime or 08:00. */
+function getScheduleDoseTime(schedule: { timeWindow?: SupplementTimeWindow; reminderTime?: string }): string {
+  if (schedule.timeWindow && SUPPLEMENT_TIME_WINDOWS[schedule.timeWindow]) {
+    return SUPPLEMENT_TIME_WINDOWS[schedule.timeWindow].start;
   }
-}
-
-/** Generate dose times for a schedule based on frequency + reminderTime. */
-function scheduleDoseTimes(reminderTime: string | undefined, freq: SupplementFrequency): string[] {
-  const base = reminderTime ?? '08:00';
-  const count = dosesPerDay(freq);
-  if (count === 0) return []; // as_needed has no scheduled doses
-  if (count === 1) return [base];
-  // twice_daily: base and base + 12h
-  const [h, m] = base.split(':').map(Number);
-  const second = `${String((h + 12) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-  return [base, second];
+  return schedule.reminderTime ?? '08:00';
 }
 
 function formatTime12(t: string): string {
@@ -67,54 +53,43 @@ export default function SupplementScheduleWidget({ onAddSchedule }: Props) {
     l => l.patientId === state.activePatientId && l.date === today
   );
 
-  // Check if today is the right day for weekly schedules
-  const todayDayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon, etc.
-
   const doses = useMemo((): DoseItem[] => {
     const now = new Date();
     const currentMins = now.getHours() * 60 + now.getMinutes();
     const items: DoseItem[] = [];
 
     for (const schedule of schedules) {
-      // Weekly schedules only show on the day they were created (or every 7th day)
-      if (schedule.frequency === 'weekly') {
-        const createdDay = new Date(schedule.createdAt).getDay();
-        if (todayDayOfWeek !== createdDay) continue;
-      }
       // as_needed schedules don't show on dashboard
       if (schedule.frequency === 'as_needed') continue;
 
-      const doseTimes = scheduleDoseTimes(schedule.reminderTime, schedule.frequency);
+      const doseTime = getScheduleDoseTime(schedule);
+      const [dh, dm] = doseTime.split(':').map(Number);
+      const doseMins = dh * 60 + dm;
 
-      for (const doseTime of doseTimes) {
-        const [dh, dm] = doseTime.split(':').map(Number);
-        const doseMins = dh * 60 + dm;
+      const taken = todayLogs.some(
+        l => l.name.toLowerCase() === schedule.name.toLowerCase() && l.time === doseTime
+      );
 
-        const taken = todayLogs.some(
-          l => l.name.toLowerCase() === schedule.name.toLowerCase() && l.time === doseTime
-        );
-
-        let status: DoseStatus;
-        if (taken) {
-          status = 'taken';
-        } else if (currentMins > doseMins + 30) {
-          status = 'overdue';
-        } else if (Math.abs(currentMins - doseMins) <= 5) {
-          status = 'due';
-        } else {
-          status = 'upcoming';
-        }
-
-        items.push({
-          scheduleId: schedule.id,
-          name: schedule.name,
-          dosage: schedule.dosage,
-          doseTime,
-          status,
-          form: schedule.form,
-          frequency: schedule.frequency,
-        });
+      let status: DoseStatus;
+      if (taken) {
+        status = 'taken';
+      } else if (currentMins > doseMins + 30) {
+        status = 'overdue';
+      } else if (Math.abs(currentMins - doseMins) <= 5) {
+        status = 'due';
+      } else {
+        status = 'upcoming';
       }
+
+      items.push({
+        scheduleId: schedule.id,
+        name: schedule.name,
+        dosage: schedule.dosage,
+        doseTime,
+        status,
+        form: schedule.form,
+        timeWindow: schedule.timeWindow,
+      });
     }
 
     const ORDER: Record<DoseStatus, number> = { due: 0, overdue: 1, upcoming: 2, taken: 3 };
@@ -125,7 +100,7 @@ export default function SupplementScheduleWidget({ onAddSchedule }: Props) {
     });
 
     return items;
-  }, [schedules, todayLogs, todayDayOfWeek]);
+  }, [schedules, todayLogs]);
 
   function markAsTaken(dose: DoseItem) {
     addSupplementLog({
@@ -224,7 +199,7 @@ export default function SupplementScheduleWidget({ onAddSchedule }: Props) {
                     {dose.dosage && <span className="font-normal text-slate-500"> {dose.dosage}</span>}
                   </p>
                   <p className="text-xs text-slate-400">
-                    {SUPPLEMENT_FREQUENCY_LABELS[dose.frequency]}
+                    {dose.timeWindow ? SUPPLEMENT_TIME_WINDOWS[dose.timeWindow].label : 'Daily'}
                   </p>
                 </div>
 
