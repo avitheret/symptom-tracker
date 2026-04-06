@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Activity, LayoutDashboard, List, BarChart2, Brain, Notebook,
-  LogIn, ChevronDown, Users, Plus, Shield,
+  LogIn, ChevronDown, Users, Plus, Shield, FlaskConical,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,6 +10,7 @@ import type { View } from '../types';
 const NAV: { view: View; label: string; Icon: React.FC<{ size?: number; className?: string }> }[] = [
   { view: 'dashboard',  label: 'Dashboard',  Icon: LayoutDashboard },
   { view: 'conditions', label: 'Conditions', Icon: List },
+  { view: 'supplements', label: 'Supplements', Icon: FlaskConical },
   { view: 'reports',    label: 'Reports',    Icon: BarChart2 },
   { view: 'insights',   label: 'Insights',   Icon: Brain },
   { view: 'notes',      label: 'Notes',      Icon: Notebook },

@@ -131,7 +131,7 @@ export interface DailyCheckIn {
 
 // ── Dashboard Widgets ───────────────────────────────────────────────────────
 
-export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'recentMeals' | 'medSchedule' | 'weather';
+export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'recentMeals' | 'medSchedule' | 'supplements' | 'weather';
 
 export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string }> = {
   stats:        { label: 'Summary Stats',    description: 'Total entries, weekly count, average severity' },
@@ -145,10 +145,11 @@ export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string 
   recentLog:    { label: 'Recent Entries',   description: 'Last 5 logged symptoms' },
   recentMeals:  { label: 'Recent Meals',     description: 'Last few logged meals at a glance' },
   medSchedule:  { label: 'Meds Schedule',   description: 'Upcoming medication doses & reminders' },
+  supplements:  { label: 'Supplements',    description: 'Daily supplement schedule with dose tracking' },
   weather:      { label: 'Weather Tracker', description: 'Auto-track pressure, humidity, storms — migraine triggers' },
 };
 
-export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentMeals', 'recentLog', 'medSchedule'];
+export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentMeals', 'recentLog', 'medSchedule', 'supplements'];
 
 // ── Existing analytics types ─────────────────────────────────────────────────
 

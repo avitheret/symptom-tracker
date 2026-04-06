@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed } from 'lucide-react';
+import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed, FlaskConical } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import TrackingModal from './TrackingModal';
@@ -11,12 +11,13 @@ import DailyExplainerCard from './DailyExplainerCard';
 import ReviewQueue from './ReviewQueue';
 import AIInsightsCard from './AIInsightsCard';
 import MedicationTab from './MedicationTab';
+import SupplementScheduleWidget from './SupplementScheduleWidget';
 import DashboardCustomizer from './DashboardCustomizer';
 import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState } from './ui';
-import type { Condition, WidgetId, FoodLog } from '../types';
+import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.2.4';
+const APP_VERSION = 'v3.2.5';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -59,6 +60,12 @@ function loadPrefs(): WidgetId[] {
         if (recentLogIdx >= 0) saved.splice(recentLogIdx, 0, 'recentMeals');
         else saved.push('recentMeals');
       }
+      // Migration: add supplements if missing (new widget in v3.2.5)
+      if (!saved.includes('supplements')) {
+        const medIdx = saved.indexOf('medSchedule');
+        if (medIdx >= 0) saved.splice(medIdx + 1, 0, 'supplements');
+        else saved.push('supplements');
+      }
       localStorage.setItem(PREFS_KEY, JSON.stringify(saved));
       return saved;
     }
@@ -94,6 +101,7 @@ interface Props {
   onEditMeal?:       (log: FoodLog) => void;
   onOpenMedSchedule?: () => void;
   onEditMedSchedule?: (schedule: import('../types').MedicationSchedule) => void;
+  onOpenSupplementSchedule?: () => void;
 }
 
 function RecentMealsWidget({ logs, onSeeAll, onEditMeal }: {
@@ -137,22 +145,25 @@ function RecentMealsWidget({ logs, onSeeAll, onEditMeal }: {
   );
 }
 
-function RecentLogWidget({ entries, conditions, foodLogs, onSeeAll }: {
+function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeAll }: {
   entries: import('../types').TrackingEntry[];
   conditions: import('../types').Condition[];
   foodLogs: FoodLog[];
+  supplementLogs: SupplementLog[];
   onSeeAll: () => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(6);
 
-  // Combine symptom entries + meal logs into one chronological feed
+  // Combine symptom entries + meal logs + supplement logs into one chronological feed
   type CombinedItem =
-    | { kind: 'symptom'; data: import('../types').TrackingEntry; ts: number }
-    | { kind: 'meal';    data: FoodLog;                          ts: number };
+    | { kind: 'symptom';    data: import('../types').TrackingEntry; ts: number }
+    | { kind: 'meal';       data: FoodLog;                          ts: number }
+    | { kind: 'supplement'; data: SupplementLog;                    ts: number };
 
   const combined: CombinedItem[] = [
-    ...entries.map(e  => ({ kind: 'symptom' as const, data: e,  ts: e.createdAt  })),
-    ...foodLogs.map(l => ({ kind: 'meal'    as const, data: l,  ts: l.createdAt  })),
+    ...entries.map(e  => ({ kind: 'symptom'    as const, data: e,  ts: e.createdAt  })),
+    ...foodLogs.map(l => ({ kind: 'meal'       as const, data: l,  ts: l.createdAt  })),
+    ...supplementLogs.map(l => ({ kind: 'supplement' as const, data: l, ts: l.createdAt })),
   ].sort((a, b) => b.ts - a.ts);
 
   const visible = combined.slice(0, visibleCount);
@@ -183,6 +194,25 @@ function RecentLogWidget({ entries, conditions, foodLogs, onSeeAll }: {
                   </p>
                 </div>
                 <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Meal</span>
+              </div>
+            );
+          }
+          if (item.kind === 'supplement') {
+            return (
+              <div key={item.data.id}
+                className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${!isLast ? 'border-b border-slate-50' : ''}`}
+              >
+                <FlaskConical size={16} className="flex-shrink-0" style={{ color: '#8b5cf6' }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 truncate">
+                    {item.data.name}
+                    {item.data.dosage && <span className="text-slate-400 font-normal"> {item.data.dosage}</span>}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Supplement · {formatRelativeDate(item.data.date)} · {item.data.time}
+                  </p>
+                </div>
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: '#8b5cf6', backgroundColor: '#f5f3ff' }}>Supplement</span>
               </div>
             );
           }
@@ -226,7 +256,7 @@ function RecentLogWidget({ entries, conditions, foodLogs, onSeeAll }: {
   );
 }
 
-export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onEditMeal, onOpenMedSchedule, onEditMedSchedule }: Props) {
+export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onEditMeal, onOpenMedSchedule, onEditMedSchedule, onOpenSupplementSchedule }: Props) {
   const { state, setView, selectCondition, loadSampleData, injectTodayDemoEntries, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient } = useApp();
   const { user } = useAuth();
   const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
@@ -241,6 +271,10 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
   const patientMeals   = useMemo(
     () => state.foodLogs.filter(l => l.patientId === state.activePatientId),
     [state.foodLogs, state.activePatientId],
+  );
+  const patientSupplements = useMemo(
+    () => (state.supplementLogs ?? []).filter(l => l.patientId === state.activePatientId),
+    [state.supplementLogs, state.activePatientId],
   );
   const approvedEntries = patientEntries.filter(
     e => e.reviewStatus !== 'to_review' && e.reviewStatus !== 'disapproved',
@@ -488,11 +522,12 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
       )}
 
       {/* ── Recent Log widget ─────────────────────────────── */}
-      {show('recentLog') && (patientEntries.length > 0 || patientMeals.length > 0) && (
+      {show('recentLog') && (patientEntries.length > 0 || patientMeals.length > 0 || patientSupplements.length > 0) && (
         <RecentLogWidget
           entries={patientEntries}
           conditions={conditions}
           foodLogs={patientMeals}
+          supplementLogs={patientSupplements}
           onSeeAll={() => setView('reports')}
         />
       )}
@@ -509,6 +544,11 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
           onOpenMedSchedule={onOpenMedSchedule}
           onEditMedSchedule={onEditMedSchedule}
         />
+      )}
+
+      {/* ── Supplements widget ─────────────────────────────── */}
+      {show('supplements') && (
+        <SupplementScheduleWidget onAddSchedule={onOpenSupplementSchedule ?? (() => {})} />
       )}
 
       {/* ── Quick Log widget ──────────────────────────────── */}

@@ -284,6 +284,7 @@ function AppContent() {
             onEditMeal={openFoodLogForEdit}
             onOpenMedSchedule={() => { setEditingSchedule(undefined); setShowMedSchedule(true); }}
             onEditMedSchedule={(s) => { setEditingSchedule(s); setShowMedSchedule(true); }}
+            onOpenSupplementSchedule={() => { setEditingSupplementSchedule(undefined); setShowSupplementSchedule(true); }}
           />
         )}
         {state.view === 'conditions' && <ConditionsList />}

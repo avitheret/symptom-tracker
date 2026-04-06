@@ -37,6 +37,12 @@ export default function Insights() {
   const patterns   = useMemo(() => gatherAllPatterns(patientEntries),  [patientEntries]);
   const clusters   = useMemo(() => detectClusters(patientEntries),     [patientEntries]);
 
+  // Supplement log count for context display
+  const supplementCount = useMemo(
+    () => (state.supplementLogs ?? []).filter(l => l.patientId === state.activePatientId).length,
+    [state.supplementLogs, state.activePatientId],
+  );
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
 
@@ -44,7 +50,8 @@ export default function Insights() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Insights</h1>
         <p className="text-sm text-slate-400 mt-0.5">
-          Patterns, clusters, and timeline from your logged symptoms.
+          Patterns, clusters, and timeline from {patientEntries.length} symptoms
+          {supplementCount > 0 && `, ${supplementCount} supplement log${supplementCount !== 1 ? 's' : ''}`}.
         </p>
       </div>
 
