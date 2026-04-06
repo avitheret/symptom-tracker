@@ -174,7 +174,12 @@ export default function SupplementDatabaseUpload({ onDone }: Props) {
 
       let imported = 0;
       if (CLOUD_ENABLED && user && supabase) {
-        imported = await handleCloudUpload(parsed);
+        try {
+          imported = await handleCloudUpload(parsed);
+        } catch {
+          // Table may not exist in Supabase — fall back to local
+          imported = handleLocalUpload(parsed);
+        }
       } else {
         imported = handleLocalUpload(parsed);
       }
