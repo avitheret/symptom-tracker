@@ -213,7 +213,17 @@ export interface ExtractedCheckIn {
   matchedFields: string[];
 }
 
-export type ExtractedItem = ExtractedSymptom | ExtractedMedication | ExtractedTrigger | ExtractedCheckIn;
+export interface ExtractedSupplement {
+  type: 'supplement';
+  id: string;
+  name: string;
+  timeWindow?: SupplementTimeWindow;
+  quantity?: string;
+  description?: string;
+  matchedText: string;
+}
+
+export type ExtractedItem = ExtractedSymptom | ExtractedMedication | ExtractedTrigger | ExtractedCheckIn | ExtractedSupplement;
 
 export interface ExtractionTimestamp {
   date: string;          // YYYY-MM-DD
@@ -363,6 +373,8 @@ export interface SupplementLog {
   notes: string;
   createdAt: number;
   sourceTranscript?: string;
+  sourceNoteId?: string;
+  extractedFromNote?: boolean;
 }
 
 export type SupplementFrequency = 'daily' | 'twice_daily' | 'weekly' | 'as_needed';

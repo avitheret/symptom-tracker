@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import {
-  ClipboardList, Pill, Zap, HeartPulse, Clock, AlertCircle,
+  ClipboardList, Pill, Zap, HeartPulse, FlaskConical, Clock, AlertCircle,
   Check, X, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import type { ExtractionResult, ExtractedItem, ExtractedSymptom } from '../types';
+import { SUPPLEMENT_TIME_WINDOWS } from '../types';
 import { Sheet, Button } from './ui';
 
 interface Props {
@@ -24,10 +25,11 @@ function formatTime(time: string): string {
 }
 
 const TYPE_META: Record<ExtractedItem['type'], { label: string; color: string; bg: string; Icon: typeof ClipboardList }> = {
-  symptom:    { label: 'Symptoms',    color: 'text-blue-700',   bg: 'bg-blue-50',   Icon: ClipboardList },
+  symptom:    { label: 'Symptoms',    color: 'text-blue-700',    bg: 'bg-blue-50',    Icon: ClipboardList },
   medication: { label: 'Medications', color: 'text-emerald-700', bg: 'bg-emerald-50', Icon: Pill },
-  trigger:    { label: 'Triggers',    color: 'text-amber-700',  bg: 'bg-amber-50',  Icon: Zap },
-  checkin:    { label: 'Check-In',    color: 'text-purple-700', bg: 'bg-purple-50',  Icon: HeartPulse },
+  trigger:    { label: 'Triggers',    color: 'text-amber-700',   bg: 'bg-amber-50',  Icon: Zap },
+  checkin:    { label: 'Check-In',    color: 'text-purple-700',  bg: 'bg-purple-50', Icon: HeartPulse },
+  supplement: { label: 'Supplements', color: 'text-teal-700',    bg: 'bg-teal-50',   Icon: FlaskConical },
 };
 
 // ── Severity editor (inline) ─────────────────────────────────────────────────
@@ -152,7 +154,7 @@ export default function ExtractionReviewSheet({ result, onConfirm, onSkip, onClo
         </div>
 
         {/* Grouped items */}
-        {(['symptom', 'medication', 'trigger', 'checkin'] as const).map(type => {
+        {(['symptom', 'medication', 'supplement', 'trigger', 'checkin'] as const).map(type => {
           const items = grouped.get(type);
           if (!items || items.length === 0) return null;
           const meta = TYPE_META[type];
@@ -212,6 +214,24 @@ export default function ExtractionReviewSheet({ result, onConfirm, onSkip, onClo
                           <span className="text-sm font-medium text-slate-800">{item.name}</span>
                           {item.dosage && (
                             <span className="text-xs text-slate-400 ml-1.5">{item.dosage}</span>
+                          )}
+                        </div>
+                      )}
+                      {item.type === 'supplement' && (
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium text-slate-800">{item.name}</span>
+                            {item.timeWindow && (
+                              <span className="text-xs text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded-full">
+                                {SUPPLEMENT_TIME_WINDOWS[item.timeWindow].label}
+                              </span>
+                            )}
+                            {item.quantity && (
+                              <span className="text-xs text-slate-400">{item.quantity}</span>
+                            )}
+                          </div>
+                          {item.description && (
+                            <p className="text-xs text-slate-400 italic mt-0.5">{item.description}</p>
                           )}
                         </div>
                       )}

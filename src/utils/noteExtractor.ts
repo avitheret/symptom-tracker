@@ -1,7 +1,8 @@
 import type {
   Condition, ExtractionResult, ExtractionTimestamp,
   ExtractedSymptom, ExtractedMedication, ExtractedTrigger, ExtractedCheckIn,
-  ExtractedItem,
+  ExtractedSupplement, ExtractedItem,
+  SupplementDatabaseEntry,
 } from '../types';
 
 // ── Known Medications ───────────────────────────────────────────────────────
@@ -390,6 +391,77 @@ function extractCheckIn(text: string): ExtractedCheckIn | null {
   return fields.matchedFields.length > 0 ? fields : null;
 }
 
+// ── Supplement Extraction ───────────────────────────────────────────────────
+
+function extractSupplements(
+  text: string,
+  supplementDatabase: SupplementDatabaseEntry[],
+): ExtractedSupplement[] {
+  const lower = text.toLowerCase();
+  const results: ExtractedSupplement[] = [];
+  const seen = new Set<string>(); // by name (lowercased) for dedup
+  let counter = 0;
+
+  // 1. Match against supplement database entries (highest priority)
+  // Sort by name length descending so "Liposomal Vitamin C" matches before "Vitamin C"
+  const sortedDb = [...supplementDatabase].sort((a, b) => b.name.length - a.name.length);
+  for (const entry of sortedDb) {
+    const nameLower = entry.name.toLowerCase();
+    if (seen.has(nameLower)) continue;
+    const escaped = nameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(lower)) {
+      seen.add(nameLower);
+      results.push({
+        type: 'supplement',
+        id: `esu-${counter++}`,
+        name: entry.name,
+        timeWindow: entry.timeWindow,
+        quantity: entry.quantity,
+        description: entry.description,
+        matchedText: nameLower,
+      });
+    }
+  }
+
+  // 2. Fallback: "took/taken/had my [name]" patterns for supplements not in the database
+  const verbPatterns = [
+    /\btook\s+(?:my\s+)?([a-z][a-z\s]{2,30}?)(?:\s+\d|\s*$|[.,;])/g,
+    /\btaken\s+(?:my\s+)?([a-z][a-z\s]{2,30}?)(?:\s+\d|\s*$|[.,;])/g,
+    /\bhad\s+my\s+([a-z][a-z\s]{2,30}?)(?:\s+\d|\s*$|[.,;])/g,
+  ];
+
+  const skip = new Set([
+    'my', 'the', 'some', 'a', 'an', 'it', 'nap', 'walk', 'break',
+    'bath', 'shower', 'rest', 'day off', 'note', 'lunch', 'dinner',
+    'breakfast', 'medication', 'medicine', 'pill', 'pills',
+  ]);
+
+  // Collect known medication names to avoid double-extracting
+  const medNames = new Set(Object.values(KNOWN_MEDICATIONS).map(n => n.toLowerCase()));
+
+  for (const re of verbPatterns) {
+    let match;
+    while ((match = re.exec(lower)) !== null) {
+      const candidate = match[1].trim();
+      if (candidate.length < 3) continue;
+      if (skip.has(candidate)) continue;
+      if (seen.has(candidate)) continue;
+      if (medNames.has(candidate)) continue;
+      // Skip if it's a known medication key
+      if (KNOWN_MEDICATIONS[candidate]) continue;
+      seen.add(candidate);
+      results.push({
+        type: 'supplement',
+        id: `esu-${counter++}`,
+        name: candidate.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        matchedText: candidate,
+      });
+    }
+  }
+
+  return results;
+}
+
 // ── Main Extraction Function ────────────────────────────────────────────────
 
 export function extractFromNote(
@@ -397,6 +469,7 @@ export function extractFromNote(
   text: string,
   conditions: Condition[],
   noteDate: Date,
+  supplementDatabase?: SupplementDatabaseEntry[],
 ): ExtractionResult {
   const items: ExtractedItem[] = [];
 
@@ -414,7 +487,15 @@ export function extractFromNote(
   const checkIn = extractCheckIn(text);
   if (checkIn) items.push(checkIn);
 
-  // 5. Timestamp
+  // 5. Supplements
+  if (supplementDatabase && supplementDatabase.length > 0) {
+    items.push(...extractSupplements(text, supplementDatabase));
+  } else {
+    // Even without a database, try verb-pattern extraction
+    items.push(...extractSupplements(text, []));
+  }
+
+  // 6. Timestamp
   const timestamp = parseTimestamp(text, noteDate);
 
   return {

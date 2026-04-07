@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import type {
   AIInsight, Condition, DailyCheckIn, ExtractionResult, ExtractionStatus,
-  ExtractedCheckIn, ExtractedMedication, ExtractedSymptom, ExtractedTrigger,
+  ExtractedCheckIn, ExtractedMedication, ExtractedSupplement, ExtractedSymptom, ExtractedTrigger,
   FoodLog, MedicationLog, MedicationSchedule, NotificationPreferences, Note,
   Patient, PatientCondition, SupplementDatabaseEntry, Symptom,
   SupplementLog, SupplementSchedule,
   TrackingEntry, TriggerLog, View,
 } from '../types';
+import { SUPPLEMENT_TIME_WINDOWS } from '../types';
 import { CLOUD_ENABLED, supabase } from '../lib/supabase';
 import { computeDoseTimes } from '../utils/notifications';
 import { logActivity, ACTIONS } from '../utils/activityLogger';
@@ -101,6 +102,7 @@ type Action =
   | { type: 'UPDATE_MED_SCHEDULE'; id: string; patch: Partial<Omit<MedicationSchedule, 'id' | 'patientId' | 'createdAt'>> }
   | { type: 'DELETE_MED_SCHEDULE'; id: string }
   | { type: 'ADD_SUPPLEMENT_LOG'; log: Omit<SupplementLog, 'id' | 'dayOfWeek' | 'createdAt'> }
+  | { type: 'BULK_ADD_SUPPLEMENT_LOGS'; logs: SupplementLog[] }
   | { type: 'DELETE_SUPPLEMENT_LOG'; id: string }
   | { type: 'ADD_SUPPLEMENT_SCHEDULE'; schedule: SupplementSchedule }
   | { type: 'UPDATE_SUPPLEMENT_SCHEDULE'; id: string; patch: Partial<Omit<SupplementSchedule, 'id' | 'patientId' | 'createdAt'>> }
@@ -400,6 +402,9 @@ function reducer(state: State, action: Action): State {
       };
       return { ...state, supplementLogs: [...(state.supplementLogs ?? []), log] };
     }
+
+    case 'BULK_ADD_SUPPLEMENT_LOGS':
+      return { ...state, supplementLogs: [...(state.supplementLogs ?? []), ...action.logs] };
 
     case 'DELETE_SUPPLEMENT_LOG':
       return { ...state, supplementLogs: (state.supplementLogs ?? []).filter(l => l.id !== action.id) };
@@ -991,6 +996,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           notes: '',
         },
       });
+    }
+
+    // ── Supplement logs ────────────────────────────────────────────────────────
+    const supplementItems = items.filter(
+      (i): i is ExtractedSupplement => i.type === 'supplement'
+    );
+    if (supplementItems.length > 0) {
+      const supplementLogEntries: SupplementLog[] = supplementItems.map(s => {
+        const id = `sl-${now}-${uid()}`;
+        linkedLogIds.push(id);
+        const time = s.timeWindow
+          ? SUPPLEMENT_TIME_WINDOWS[s.timeWindow].start
+          : timestamp.time;
+        return {
+          id,
+          patientId,
+          name: s.name,
+          date: timestamp.date,
+          dayOfWeek: getDayOfWeek(timestamp.date),
+          time,
+          notes: '',
+          createdAt: now,
+          sourceNoteId: noteId,
+          extractedFromNote: true,
+        };
+      });
+      dispatch({ type: 'BULK_ADD_SUPPLEMENT_LOGS', logs: supplementLogEntries });
     }
 
     // ── Update note status ───────────────────────────────────────────────────

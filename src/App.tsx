@@ -243,12 +243,15 @@ function AppContent() {
     const patientId = state.activePatientId;
     if (!patientId) return;
     const conditions = getPatientConditions(patientId);
-    const result = extractFromNote(noteId, noteText, conditions, date ?? new Date());
+    const supplementDb = (state.supplementDatabase ?? []).filter(
+      e => e.patientId === patientId
+    );
+    const result = extractFromNote(noteId, noteText, conditions, date ?? new Date(), supplementDb);
     if (result.hasItems) {
       updateNoteExtraction(noteId, { extractionStatus: 'pending' });
       setExtractionPending(result);
     }
-  }, [state.activePatientId, getPatientConditions, updateNoteExtraction]);
+  }, [state.activePatientId, state.supplementDatabase, getPatientConditions, updateNoteExtraction]);
 
   const handleExtractFromNote = useCallback((note: Note) => {
     runExtraction(note.id, note.text, new Date(note.createdAt));
