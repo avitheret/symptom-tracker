@@ -2,8 +2,8 @@
  * SupplementModal — log a supplement by voice (zero extra taps) or manually.
  *
  * Voice flow (mirrors FoodLogModal exactly):
- *   1. Auto-starts recording on mount.
- *   2. 5 s silence → stops, extracts name/time, pre-fills form — stays open.
+ *   1. Auto-starts recording on mount (gracefully degrades if mic unavailable).
+ *   2. 3 s silence → stops, extracts name/time, pre-fills form — stays open.
  *   3. A secondary save listener activates when idle; say "save log", "save it",
  *      "save supplement", or "submit" to confirm. Tap "Save" is always available.
  *   4. 15 s no-speech timeout drops to idle (mic never stuck).
@@ -40,9 +40,9 @@ interface Props {
   initialQuantity?: string;
 }
 
-type DictateState = 'listening' | 'analysing' | 'idle' | 'error';
+type DictateState = 'listening' | 'analysing' | 'idle';
 
-const SILENCE_MS   = 5000;
+const SILENCE_MS   = 3000;
 const NO_SPEECH_MS = 15000;
 const STOP_PHRASES = ['log supplement', 'log it', 'done recording', 'submit'];
 const SAVE_PHRASES = ['save log', 'save it', 'save supplement', 'submit'];
@@ -69,7 +69,6 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
   const [quantity,   setQuantity]   = useState(initialQuantity ?? dbMatch?.quantity ?? '');
   const [notes,      setNotes]      = useState('');
   const [dictate,    setDictate]    = useState<DictateState>('idle');
-  const [dictateErr, setDictateErr] = useState('');
   const [liveText,   setLiveText]   = useState('');
   const [showPicker, setShowPicker] = useState(false);
   const [pickerFilter, setPickerFilter] = useState('');
@@ -190,8 +189,7 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
       if (result.notes) setNotes(result.notes);
       setDictate('idle');
     } catch {
-      setDictate('error');
-      setDictateErr('Could not process voice note. Please fill in manually.');
+      setDictate('idle');
     }
     isBusyRef.current = false;
   }, [stopRecognition, dbEntries]);
@@ -211,7 +209,6 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
     isBusyRef.current = false;
     transcriptRef.current = '';
     setDictate('listening');
-    setDictateErr('');
     setLiveText('');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -243,14 +240,9 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
       silenceTimer.current = setTimeout(() => stopAndExtract(), SILENCE_MS);
     };
 
-    rec.onerror = (e: { error: string }) => {
+    rec.onerror = () => {
       stopRecognition();
-      setDictate('error');
-      setDictateErr(
-        e.error === 'not-allowed'
-          ? 'Microphone access denied. Please check your browser settings.'
-          : 'Could not access microphone.'
-      );
+      setDictate('idle');
     };
 
     rec.onend = () => {
@@ -387,17 +379,16 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
           </div>
         )}
 
-        {dictate === 'error' && dictateErr && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-            <p className="text-sm text-red-600">{dictateErr}</p>
-            <button
-              type="button"
-              onClick={startDictation}
-              className="text-xs text-red-700 font-medium mt-1 hover:underline"
-            >
-              Try again
-            </button>
-          </div>
+        {/* Retry mic button — shown when idle, lets user re-enable voice */}
+        {dictate === 'idle' && (
+          <button
+            type="button"
+            onClick={startDictation}
+            className="flex items-center justify-center p-2 text-slate-400 hover:bg-teal-50 rounded-lg transition-colors"
+            title="Retry voice input"
+          >
+            <Mic size={16} />
+          </button>
         )}
 
         {/* Save hint — shown when name is filled and dictation idle */}
