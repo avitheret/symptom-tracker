@@ -398,18 +398,27 @@ function extractSupplementTakenPrefill(
   return { name: toTitleCase(raw) };
 }
 
+/**
+ * Normalize supplement name for comparison.
+ * Converts hyphens to spaces and collapses whitespace so
+ * "Omega-3" matches "Omega 3", "D3+K2" matches "D3 + K2", etc.
+ */
+function normSupp(name: string): string {
+  return name.toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 /** Fuzzy-match spoken text against supplement database names. */
 function fuzzyMatchSupplement(
   spoken: string,
   entries: SupplementDatabaseEntry[],
 ): SupplementDatabaseEntry | undefined {
-  const s = spoken.toLowerCase().trim();
+  const s = normSupp(spoken);
   if (s.length < 2) return undefined;
   return (
-    entries.find(e => e.name.toLowerCase() === s) ??
-    entries.find(e => e.name.toLowerCase().startsWith(s)) ??
-    entries.find(e => s.startsWith(e.name.toLowerCase()) && e.name.length >= 3) ??
-    entries.find(e => e.name.toLowerCase().includes(s) || s.includes(e.name.toLowerCase()))
+    entries.find(e => normSupp(e.name) === s) ??
+    entries.find(e => normSupp(e.name).startsWith(s)) ??
+    entries.find(e => s.startsWith(normSupp(e.name)) && e.name.length >= 3) ??
+    entries.find(e => normSupp(e.name).includes(s) || s.includes(normSupp(e.name)))
   );
 }
 

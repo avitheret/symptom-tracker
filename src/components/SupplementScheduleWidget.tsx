@@ -66,12 +66,10 @@ export default function SupplementScheduleWidget({ onAddSchedule }: Props) {
       const [dh, dm] = doseTime.split(':').map(Number);
       const doseMins = dh * 60 + dm;
 
-      // Taken if any log for this supplement exists today — regardless of what time
-      // it was saved. Voice logs land at wall-clock time, not at the scheduled
-      // doseTime, so exact-time matching would always miss them.
-      const taken = todayLogs.some(
-        l => l.name.toLowerCase() === schedule.name.toLowerCase()
-      );
+      // Taken if any log for this supplement exists today — regardless of time.
+      // Normalise names so STT variants like "Omega-3" match schedule "Omega 3".
+      const normName = (n: string) => n.toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+      const taken = todayLogs.some(l => normName(l.name) === normName(schedule.name));
 
       let status: DoseStatus;
       if (taken) {

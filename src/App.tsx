@@ -51,6 +51,24 @@ function fuzzyMatch<T extends { name: string }>(items: T[], hint: string): T | u
   );
 }
 
+// ─── Supplement name normalisation ───────────────────────────────────────────
+// STT often uses "Omega-3" for a schedule named "Omega 3". Normalise before
+// comparison so hyphens == spaces and runs of whitespace collapse.
+function normSupp(name: string): string {
+  return name.toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function fuzzyMatchSchedule<T extends { name: string }>(items: T[], spoken: string): T | undefined {
+  const s = normSupp(spoken);
+  if (s.length < 2) return undefined;
+  return (
+    items.find(i => normSupp(i.name) === s) ??
+    items.find(i => normSupp(i.name).startsWith(s)) ??
+    items.find(i => s.startsWith(normSupp(i.name)) && i.name.length >= 3) ??
+    items.find(i => normSupp(i.name).includes(s) || s.includes(normSupp(i.name)))
+  );
+}
+
 function AppContent() {
   const { state, setView, getPatientConditions, confirmNoteExtraction, updateNoteExtraction, addEntry, addSupplementLog, loadSupplementDatabase } = useApp();
   const { isAuthenticated, needsOnboarding, isLoading } = useAuth();
@@ -191,12 +209,7 @@ function AppContent() {
           const activeSchedules = (state.supplementSchedules ?? []).filter(
             s => s.patientId === state.activePatientId && s.status === 'active'
           );
-          const spokenName = supplementPrefill.name.toLowerCase();
-          const matchedSchedule =
-            activeSchedules.find(s => s.name.toLowerCase() === spokenName) ??
-            activeSchedules.find(s => s.name.toLowerCase().startsWith(spokenName)) ??
-            activeSchedules.find(s => spokenName.startsWith(s.name.toLowerCase()) && s.name.length >= 3) ??
-            activeSchedules.find(s => s.name.toLowerCase().includes(spokenName) || spokenName.includes(s.name.toLowerCase()));
+          const matchedSchedule = fuzzyMatchSchedule(activeSchedules, supplementPrefill.name);
           if (matchedSchedule) {
             const now = new Date();
             addSupplementLog({
@@ -232,15 +245,11 @@ function AppContent() {
           inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
           break;
         }
-        // Fuzzy match against supplement schedules
+        // Fuzzy match against supplement schedules (normalised: hyphens == spaces)
         const schedules = (state.supplementSchedules ?? []).filter(
           s => s.patientId === state.activePatientId && s.status === 'active'
         );
-        const spokenName = supplementTakenPrefill.name.toLowerCase();
-        const matched = schedules.find(s => s.name.toLowerCase() === spokenName)
-          ?? schedules.find(s => s.name.toLowerCase().startsWith(spokenName))
-          ?? schedules.find(s => spokenName.startsWith(s.name.toLowerCase()) && s.name.length >= 3)
-          ?? schedules.find(s => s.name.toLowerCase().includes(spokenName) || spokenName.includes(s.name.toLowerCase()));
+        const matched = fuzzyMatchSchedule(schedules, supplementTakenPrefill.name);
         const finalName = matched?.name ?? supplementTakenPrefill.name;
         const now = new Date();
         addSupplementLog({
