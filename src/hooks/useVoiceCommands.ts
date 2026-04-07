@@ -20,6 +20,7 @@ export type VoiceCommand =
   | 'LOG_MEDICATION'
   | 'LOG_MEAL'
   | 'LOG_SUPPLEMENT'
+  | 'MARK_SUPPLEMENT_TAKEN'
   | 'OPEN_REPORTS'
   | 'OPEN_INSIGHTS'
   | 'OPEN_HOME'
@@ -42,6 +43,11 @@ export interface SupplementPrefill {
   quantity?: string;          // e.g. "1000mg", "2 capsules"
 }
 
+/** Spoken supplement taken data extracted from a voice command. */
+export interface SupplementTakenPrefill {
+  name: string;
+}
+
 /** Spoken symptom + condition extracted from an inline voice command. */
 export interface SymptomPrefill {
   symptomName:   string;  // raw spoken name, fuzzy-matched in the caller
@@ -54,7 +60,7 @@ export interface SymptomPrefill {
 export type { MealPrefill };
 
 interface UseVoiceCommandsOptions {
-  onCommand: (command: VoiceCommand, label: string, prefill?: SymptomPrefill, mealPrefill?: MealPrefill, supplementPrefill?: SupplementPrefill) => void;
+  onCommand: (command: VoiceCommand, label: string, prefill?: SymptomPrefill, mealPrefill?: MealPrefill, supplementPrefill?: SupplementPrefill, supplementTakenPrefill?: SupplementTakenPrefill) => void;
   supplementDatabase?: SupplementDatabaseEntry[];
 }
 
@@ -135,6 +141,11 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     patterns: ['log med', 'add med', 'medication', 'log pill', 'add pill', 'log meds', 'add meds', 'log treatment', 'add treatment'],
     command: 'LOG_MEDICATION',
     label: 'Log Medication',
+  },
+  {
+    patterns: ['mark taken', 'mark as taken', 'i took', 'just took', 'mark supplement taken', 'taken my'],
+    command: 'MARK_SUPPLEMENT_TAKEN',
+    label: 'Mark Taken',
   },
   {
     patterns: ['log supplement', 'log supplements', 'add supplement', 'add supplements', 'log vitamin', 'add vitamin', 'log mineral', 'add mineral', 'log probiotic', 'log probiotics', 'add probiotic', 'add probiotics', 'log omega', 'add omega', 'log magnesium', 'add magnesium', 'log zinc', 'add zinc', 'log vitamin d', 'log vitamin c', 'supplement', 'took my vitamins', 'took my vitamin', 'took my supplement', 'took my supplements', 'took supplements', 'took my', 'took a', 'log my pills', 'add my pills', 'morning supplements', 'breakfast supplements', 'lunch supplements', 'dinner supplements', 'bedtime supplements'],
@@ -352,6 +363,37 @@ function extractSupplementPrefill(
   return { name: toTitleCase(raw) };
 }
 
+/**
+ * Extract supplement name from "mark taken" / "i took" voice commands.
+ * e.g. "mark taken magnesium" → { name: "Magnesium" }
+ *      "i took my liposomal vitamin c" → { name: "Liposomal Vitamin C" }
+ *      "just took vitamin d" → { name: "Vitamin D" }
+ */
+function extractSupplementTakenPrefill(
+  text: string,
+  dbEntries?: SupplementDatabaseEntry[],
+): SupplementTakenPrefill | null {
+  const t = text.trim().toLowerCase();
+  if (!t) return null;
+
+  // Match patterns: "mark [as] taken [my] <name>", "i/just took [my] <name>", "taken my <name>"
+  const m = t.match(/(?:mark\s+(?:as\s+)?taken|(?:i|just)\s+took|taken)\s+(?:my\s+)?(.+?)(?:\s+as\s+taken)?$/i);
+  if (!m) return null;
+
+  const raw = m[1]
+    .replace(/\b(supplement|vitamin|pill|capsule)s?\b/gi, '')
+    .trim();
+  if (!raw) return null;
+
+  // Try fuzzy-matching against database for canonical name
+  if (dbEntries?.length) {
+    const match = fuzzyMatchSupplement(raw, dbEntries);
+    if (match) return { name: match.name };
+  }
+
+  return { name: toTitleCase(raw) };
+}
+
 /** Fuzzy-match spoken text against supplement database names. */
 function fuzzyMatchSupplement(
   spoken: string,
@@ -563,8 +605,12 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
               const wakeSupPrefill = afterWakeCmd.command === 'LOG_SUPPLEMENT'
                 ? extractSupplementPrefill(afterWake, supplementDbRef.current) ?? undefined
                 : undefined;
+              const wakeSupTakenPrefill = afterWakeCmd.command === 'MARK_SUPPLEMENT_TAKEN'
+                ? extractSupplementTakenPrefill(afterWake, supplementDbRef.current) ?? undefined
+                : undefined;
               const wakeSupLabel = wakeSupPrefill?.name ? `Log ${wakeSupPrefill.name}` : wakeSupPrefill?.timeWindow ? `Log ${wakeSupPrefill.timeWindow} supplements` : afterWakeCmd.label;
-              onCommandRef.current(afterWakeCmd.command, wakeSupPrefill ? wakeSupLabel : afterWakeCmd.label, undefined, wakeMealPrefill, wakeSupPrefill);
+              const wakeLabel = wakeSupTakenPrefill?.name ? `Marked ${wakeSupTakenPrefill.name} taken` : wakeSupPrefill ? wakeSupLabel : afterWakeCmd.label;
+              onCommandRef.current(afterWakeCmd.command, wakeLabel, undefined, wakeMealPrefill, wakeSupPrefill, wakeSupTakenPrefill);
               confirmTimerRef.current = setTimeout(() => {
                 if (stateRef.current === 'confirmed') {
                   transcriptBufferRef.current = [];
@@ -596,13 +642,14 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
           prefill?: SymptomPrefill,
           mealPrefill?: MealPrefill,
           supplementPrefill?: SupplementPrefill,
+          supplementTakenPrefill?: SupplementTakenPrefill,
         ) => {
           clearTimers();
           vibrate(120);
           transcriptBufferRef.current = [];
           try { recognition.abort(); } catch (_) { /* onend will restart */ }
           setState('confirmed');
-          onCommandRef.current(command, label, prefill, mealPrefill, supplementPrefill);
+          onCommandRef.current(command, label, prefill, mealPrefill, supplementPrefill, supplementTakenPrefill);
           confirmTimerRef.current = setTimeout(() => {
             if (stateRef.current === 'confirmed') {
               transcriptBufferRef.current = [];
@@ -638,6 +685,12 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
             const supPrefill = extractSupplementPrefill(partial, supplementDbRef.current) ?? undefined;
             const label = supPrefill?.name ? `Log ${supPrefill.name}` : supPrefill?.timeWindow ? `Log ${supPrefill.timeWindow} supplements` : match.label;
             confirmCommand(match.command, label, undefined, undefined, supPrefill);
+          } else if (match.command === 'MARK_SUPPLEMENT_TAKEN') {
+            // Wait for final so user can finish saying the supplement name
+            if (!hasFinal) return;
+            const takenPrefill = extractSupplementTakenPrefill(partial, supplementDbRef.current) ?? undefined;
+            const label = takenPrefill?.name ? `Marked ${takenPrefill.name} taken` : match.label;
+            confirmCommand(match.command, label, undefined, undefined, undefined, takenPrefill);
           } else {
             confirmCommand(match.command, match.label);
           }

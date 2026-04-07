@@ -31,7 +31,7 @@ import SupplementScheduleModal from './components/SupplementScheduleModal';
 import ExtractionReviewSheet from './components/ExtractionReviewSheet';
 import MedScheduleModal from './components/MedScheduleModal';
 import AdminPanel from './components/AdminPanel';
-import { useVoiceCommands, type VoiceCommand, type SymptomPrefill, type SupplementPrefill } from './hooks/useVoiceCommands';
+import { useVoiceCommands, type VoiceCommand, type SymptomPrefill, type SupplementPrefill, type SupplementTakenPrefill } from './hooks/useVoiceCommands';
 import type { MealPrefill } from './types';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useMedScheduleSync } from './hooks/useMedScheduleSync';
@@ -52,7 +52,7 @@ function fuzzyMatch<T extends { name: string }>(items: T[], hint: string): T | u
 }
 
 function AppContent() {
-  const { state, setView, getPatientConditions, confirmNoteExtraction, updateNoteExtraction, addEntry, loadSupplementDatabase } = useApp();
+  const { state, setView, getPatientConditions, confirmNoteExtraction, updateNoteExtraction, addEntry, addSupplementLog, loadSupplementDatabase } = useApp();
   const { isAuthenticated, needsOnboarding, isLoading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -80,6 +80,8 @@ function AppContent() {
   const [editingSupplementSchedule, setEditingSupplementSchedule] = useState<SupplementSchedule | undefined>();
   const [toastVisible, setToastVisible] = useState(false);
   const [toastLabel, setToastLabel] = useState('');
+  const [inlineToast, setInlineToast] = useState<string | null>(null);
+  const inlineToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // When a full inline voice command matches (e.g. "log dizziness to migraine"),
   // open TrackingModal directly — bypassing the condition picker.
   const [voiceTrackTarget, setVoiceTrackTarget] =
@@ -118,6 +120,7 @@ function AppContent() {
     prefill?: SymptomPrefill,
     mealPrefill?: MealPrefill,
     supplementPrefill?: SupplementPrefill,
+    supplementTakenPrefill?: SupplementTakenPrefill,
   ) => {
     setToastLabel(label);
     setToastVisible(false);
@@ -189,6 +192,40 @@ function AppContent() {
         setSupplementPrefillQuantity(supplementPrefill?.quantity);
         setShowSupplement(true);
         break;
+      case 'MARK_SUPPLEMENT_TAKEN': {
+        // No modal — just log directly and show inline toast
+        if (!supplementTakenPrefill?.name) {
+          // No name extracted — show feedback
+          setInlineToast('Couldn\'t identify supplement');
+          if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+          inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+          break;
+        }
+        // Fuzzy match against supplement schedules
+        const schedules = (state.supplementSchedules ?? []).filter(
+          s => s.patientId === state.activePatientId && s.status === 'active'
+        );
+        const spokenName = supplementTakenPrefill.name.toLowerCase();
+        const matched = schedules.find(s => s.name.toLowerCase() === spokenName)
+          ?? schedules.find(s => s.name.toLowerCase().startsWith(spokenName))
+          ?? schedules.find(s => spokenName.startsWith(s.name.toLowerCase()) && s.name.length >= 3)
+          ?? schedules.find(s => s.name.toLowerCase().includes(spokenName) || spokenName.includes(s.name.toLowerCase()));
+        const finalName = matched?.name ?? supplementTakenPrefill.name;
+        const now = new Date();
+        addSupplementLog({
+          name: finalName,
+          date: now.toISOString().slice(0, 10),
+          time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+          notes: 'Voice logged · mark taken',
+          sourceTranscript: label,
+        });
+        // Show inline toast
+        setInlineToast(`✓ ${finalName} marked taken`);
+        if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+        inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+        // Do NOT call disableWakeWord() — keep listening
+        break;
+      }
       case 'OPEN_SUPPLEMENTS':
         setView('supplements');
         break;
@@ -218,7 +255,7 @@ function AppContent() {
       case 'CANCEL':
         break;
     }
-  }, [setView, getPatientConditions, state.activePatientId, addEntry]);
+  }, [setView, getPatientConditions, state.activePatientId, state.supplementSchedules, addEntry, addSupplementLog]);
 
   const { state: voiceState, manualActivate, disableWakeWord, enableWakeWord } = useVoiceCommands({
     onCommand: handleVoiceCommand,
@@ -366,6 +403,13 @@ function AppContent() {
         onLongPress={disableWakeWord}
       />
       <VoiceCommandToast label={toastLabel} visible={toastVisible} />
+
+      {/* Inline toast for mark-taken feedback */}
+      {inlineToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-sm px-4 py-2.5 rounded-full shadow-lg z-50 animate-fade-in">
+          {inlineToast}
+        </div>
+      )}
 
       {/* Global modals */}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}

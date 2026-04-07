@@ -5,6 +5,7 @@ import {
   isNotificationSupported,
   getNotificationPermission,
   showMedicationNotification,
+  showSupplementNotification,
   isWithinWindow,
   wasNotificationSent,
   markNotificationSent,
@@ -49,16 +50,22 @@ export function useNotificationScheduler() {
         }
       }
 
-      // ── Supplement database notifications ──────────────────────────────
-      const dbEntries = (state.supplementDatabase ?? []).filter(
-        e => e.patientId === state.activePatientId
+      // ── Supplement schedule notifications ────────────────────────────────
+      // Three notification types:
+      //   1. Pre-window: 15 min before window start
+      //   2. Due: at window start
+      //   3. Overdue: every 30 min after window start until taken or window ends
+      const PRE_WINDOW_MINS = 15;
+      const OVERDUE_INTERVAL_MINS = 30;
+
+      const activeSupSchedules = (state.supplementSchedules ?? []).filter(
+        s => s.patientId === state.activePatientId && s.status === 'active'
       );
 
-      for (const entry of dbEntries) {
-        const tw = SUPPLEMENT_TIME_WINDOWS[entry.timeWindow];
+      for (const schedule of activeSupSchedules) {
+        const tw = schedule.timeWindow ? SUPPLEMENT_TIME_WINDOWS[schedule.timeWindow] : undefined;
         if (!tw) continue;
 
-        // Check if current time is within the window (start to end)
         const [sh, sm] = tw.start.split(':').map(Number);
         const [eh, em] = tw.end.split(':').map(Number);
         const [ch, cm] = currentTime.split(':').map(Number);
@@ -66,22 +73,50 @@ export function useNotificationScheduler() {
         const startMins = sh * 60 + sm;
         const endMins = eh * 60 + em;
 
-        if (currentMins < startMins || currentMins > endMins) continue;
-
-        // Already sent today for this entry?
-        if (wasNotificationSent(today, entry.name, tw.start)) continue;
-
-        // Already logged today?
+        // Already logged today? Skip all notifications
         const alreadyLogged = (state.supplementLogs ?? []).some(
           l => l.patientId === state.activePatientId
             && l.date === today
-            && l.name.toLowerCase() === entry.name.toLowerCase()
+            && l.name.toLowerCase() === schedule.name.toLowerCase()
         );
         if (alreadyLogged) continue;
 
-        // Fire notification
-        showMedicationNotification(entry.name, entry.quantity, tw.start);
-        markNotificationSent(today, entry.name, tw.start);
+        // 1. Pre-window reminder (15 min before start)
+        const preKey = `pre-${schedule.name}`;
+        if (
+          currentMins >= startMins - PRE_WINDOW_MINS
+          && currentMins < startMins
+          && !wasNotificationSent(today, preKey, tw.start)
+        ) {
+          showSupplementNotification(schedule.name, schedule.quantity, tw.label, 'pre');
+          markNotificationSent(today, preKey, tw.start);
+        }
+
+        // 2. Due reminder (at window start)
+        const dueKey = `due-${schedule.name}`;
+        if (
+          currentMins >= startMins
+          && currentMins < startMins + 5  // within first 5 min of window
+          && !wasNotificationSent(today, dueKey, tw.start)
+        ) {
+          showSupplementNotification(schedule.name, schedule.quantity, tw.label, 'due');
+          markNotificationSent(today, dueKey, tw.start);
+        }
+
+        // 3. Overdue reminders (every 30 min after start, until window ends)
+        if (currentMins > startMins && currentMins <= endMins) {
+          const minutesPast = currentMins - startMins;
+          // Find which overdue slot we're in (30, 60, 90, ...)
+          const overdueSlot = Math.floor(minutesPast / OVERDUE_INTERVAL_MINS);
+          if (overdueSlot >= 1) {
+            const overdueTime = `${String(Math.floor((startMins + overdueSlot * OVERDUE_INTERVAL_MINS) / 60)).padStart(2, '0')}:${String((startMins + overdueSlot * OVERDUE_INTERVAL_MINS) % 60).padStart(2, '0')}`;
+            const overdueKey = `overdue-${schedule.name}`;
+            if (!wasNotificationSent(today, overdueKey, overdueTime)) {
+              showSupplementNotification(schedule.name, schedule.quantity, tw.label, 'overdue');
+              markNotificationSent(today, overdueKey, overdueTime);
+            }
+          }
+        }
       }
     }
 
@@ -97,7 +132,7 @@ export function useNotificationScheduler() {
     state.notificationPrefs.reminderWindowMinutes,
     state.medicationSchedules,
     state.activePatientId,
-    state.supplementDatabase,
+    state.supplementSchedules,
     state.supplementLogs,
   ]);
 }

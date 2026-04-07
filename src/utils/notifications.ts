@@ -50,6 +50,33 @@ export function showMedicationNotification(
   });
 }
 
+export function showSupplementNotification(
+  supplementName: string,
+  quantity: string | undefined,
+  windowLabel: string,
+  type: 'pre' | 'due' | 'overdue',
+): void {
+  if (getNotificationPermission() !== 'granted') return;
+
+  const titleMap = {
+    pre: `${supplementName} coming up`,
+    due: `Time to take ${supplementName}`,
+    overdue: `⚠️ ${supplementName} overdue`,
+  };
+  const bodyMap = {
+    pre: `${windowLabel} window starts soon${quantity ? ` — ${quantity}` : ''}`,
+    due: `${windowLabel} window${quantity ? ` — ${quantity}` : ''}`,
+    overdue: `${windowLabel} window — still not taken${quantity ? ` (${quantity})` : ''}`,
+  };
+
+  new Notification(titleMap[type], {
+    body: bodyMap[type],
+    icon: '/icon-192.png',
+    tag: `sup-${supplementName}-${type}`, // replaces previous notification of same type
+    requireInteraction: type === 'overdue',
+  });
+}
+
 // ── Time Utilities ──────────────────────────────────────────────────────────
 
 /** Check if currentTime is within windowMinutes of targetTime */
