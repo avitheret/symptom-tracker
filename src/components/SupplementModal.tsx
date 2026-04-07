@@ -116,6 +116,7 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
   const silenceTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noSpeechTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isBusyRef       = useRef(false);
+  const hasAutoStarted  = useRef(false);
 
   // ── Timers ────────────────────────────────────────────────────────────────
 
@@ -200,6 +201,8 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
     const SR = getSpeechRecognition();
     if (!SR) { setDictate('idle'); return; }
 
+    hasAutoStarted.current = true;
+
     // Stop any running save listener before claiming the mic.
     if (saveListenerRef.current) {
       try { saveListenerRef.current.abort(); } catch { /* ignore */ }
@@ -282,9 +285,10 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Save voice listener — active when idle ────────────────────────────────
+  // ── Save voice listener — active when idle after initial dictation ───────
   useEffect(() => {
     if (dictate !== 'idle') return;
+    if (!hasAutoStarted.current) return;
 
     const SR = getSpeechRecognition();
     if (!SR) return;
@@ -377,18 +381,6 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
             <Loader2 size={18} className="text-slate-400 animate-spin" />
             <p className="text-sm text-slate-600">Processing…</p>
           </div>
-        )}
-
-        {/* Retry mic button — shown when idle, lets user re-enable voice */}
-        {dictate === 'idle' && (
-          <button
-            type="button"
-            onClick={startDictation}
-            className="flex items-center justify-center p-2 text-slate-400 hover:bg-teal-50 rounded-lg transition-colors"
-            title="Retry voice input"
-          >
-            <Mic size={16} />
-          </button>
         )}
 
         {/* Save hint — shown when name is filled and dictation idle */}
