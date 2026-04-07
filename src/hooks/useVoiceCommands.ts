@@ -380,15 +380,19 @@ function extractSupplementTakenPrefill(
   const m = t.match(/(?:mark\s+(?:as\s+)?taken|(?:i|just)\s+took|taken)\s+(?:my\s+)?(.+?)(?:\s+as\s+taken)?$/i);
   if (!m) return null;
 
-  const raw = m[1]
-    .replace(/\b(supplement|vitamin|pill|capsule)s?\b/gi, '')
-    .trim();
+  const raw = m[1].trim();
   if (!raw) return null;
 
-  // Try fuzzy-matching against database for canonical name
+  // Try fuzzy-matching the raw spoken text against database first (preserves "vitamin d" etc.)
   if (dbEntries?.length) {
     const match = fuzzyMatchSupplement(raw, dbEntries);
     if (match) return { name: match.name };
+    // Also try with filler words stripped
+    const cleaned = raw.replace(/\b(supplement|pill|capsule)s?\b/gi, '').trim();
+    if (cleaned && cleaned !== raw) {
+      const match2 = fuzzyMatchSupplement(cleaned, dbEntries);
+      if (match2) return { name: match2.name };
+    }
   }
 
   return { name: toTitleCase(raw) };
@@ -688,7 +692,8 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
           } else if (match.command === 'MARK_SUPPLEMENT_TAKEN') {
             // Wait for final so user can finish saying the supplement name
             if (!hasFinal) return;
-            const takenPrefill = extractSupplementTakenPrefill(partial, supplementDbRef.current) ?? undefined;
+            // Use newText (final segment only) — partial accumulates repeated STT refinements
+            const takenPrefill = extractSupplementTakenPrefill(newText, supplementDbRef.current) ?? undefined;
             const label = takenPrefill?.name ? `Marked ${takenPrefill.name} taken` : match.label;
             confirmCommand(match.command, label, undefined, undefined, undefined, takenPrefill);
           } else {
