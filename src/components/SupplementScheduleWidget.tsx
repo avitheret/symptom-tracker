@@ -66,12 +66,12 @@ export default function SupplementScheduleWidget({ onAddSchedule }: Props) {
       const [dh, dm] = doseTime.split(':').map(Number);
       const doseMins = dh * 60 + dm;
 
-      // Taken if: (a) log saved with exact scheduled time, OR
-      //           (b) localStorage marker written by addSupplementLog reconciliation
-      //               (covers voice logs saved at a different wall-clock time)
-      const taken =
-        todayLogs.some(l => l.name.toLowerCase() === schedule.name.toLowerCase() && l.time === doseTime)
-        || localStorage.getItem(`st-supp-taken-${today}-${schedule.id}-${doseTime}`) === '1';
+      // Taken if any log for this supplement exists today — regardless of what time
+      // it was saved. Voice logs land at wall-clock time, not at the scheduled
+      // doseTime, so exact-time matching would always miss them.
+      const taken = todayLogs.some(
+        l => l.name.toLowerCase() === schedule.name.toLowerCase()
+      );
 
       let status: DoseStatus;
       if (taken) {
