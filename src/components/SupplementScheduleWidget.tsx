@@ -66,9 +66,12 @@ export default function SupplementScheduleWidget({ onAddSchedule }: Props) {
       const [dh, dm] = doseTime.split(':').map(Number);
       const doseMins = dh * 60 + dm;
 
-      const taken = todayLogs.some(
-        l => l.name.toLowerCase() === schedule.name.toLowerCase() && l.time === doseTime
-      );
+      // Taken if: (a) log saved with exact scheduled time, OR
+      //           (b) localStorage marker written by addSupplementLog reconciliation
+      //               (covers voice logs saved at a different wall-clock time)
+      const taken =
+        todayLogs.some(l => l.name.toLowerCase() === schedule.name.toLowerCase() && l.time === doseTime)
+        || localStorage.getItem(`st-supp-taken-${today}-${schedule.id}-${doseTime}`) === '1';
 
       let status: DoseStatus;
       if (taken) {

@@ -185,13 +185,44 @@ function AppContent() {
       case 'LOG_MEAL':
         openFoodLog(mealPrefill?.mealType, mealPrefill?.time);
         break;
-      case 'LOG_SUPPLEMENT':
+      case 'LOG_SUPPLEMENT': {
+        // If a specific name was extracted AND it matches an active schedule → direct log, no modal
+        if (supplementPrefill?.name) {
+          const activeSchedules = (state.supplementSchedules ?? []).filter(
+            s => s.patientId === state.activePatientId && s.status === 'active'
+          );
+          const spokenName = supplementPrefill.name.toLowerCase();
+          const matchedSchedule =
+            activeSchedules.find(s => s.name.toLowerCase() === spokenName) ??
+            activeSchedules.find(s => s.name.toLowerCase().startsWith(spokenName)) ??
+            activeSchedules.find(s => spokenName.startsWith(s.name.toLowerCase()) && s.name.length >= 3) ??
+            activeSchedules.find(s => s.name.toLowerCase().includes(spokenName) || spokenName.includes(s.name.toLowerCase()));
+          if (matchedSchedule) {
+            const now = new Date();
+            addSupplementLog({
+              name: matchedSchedule.name,
+              dosage: matchedSchedule.dosage,
+              form: matchedSchedule.form,
+              date: now.toISOString().slice(0, 10),
+              time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+              notes: 'Voice logged · mark taken',
+              sourceTranscript: label,
+            });
+            setInlineToast(`✓ ${matchedSchedule.name} marked taken`);
+            if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+            inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+            // Keep wake word active — no disableWakeWord()
+            break;
+          }
+        }
+        // No schedule match (or no name) → open modal as usual
         disableWakeWord();
         setSupplementPrefillName(supplementPrefill?.name);
         setSupplementPrefillTimeWindow(supplementPrefill?.timeWindow);
         setSupplementPrefillQuantity(supplementPrefill?.quantity);
         setShowSupplement(true);
         break;
+      }
       case 'MARK_SUPPLEMENT_TAKEN': {
         // No modal — just log directly and show inline toast
         if (!supplementTakenPrefill?.name) {

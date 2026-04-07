@@ -1098,8 +1098,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const patientId = state.activePatientId;
       if (!patientId) return;
       dispatch({ type: 'ADD_SUPPLEMENT_LOG', log: { ...log, patientId } });
+
+      // ── Taken marker reconciliation ────────────────────────────────────────
+      // When a log is saved at a different time than the scheduled dose, the
+      // widget's exact-time check won't match. Write a localStorage marker keyed
+      // by scheduleId + doseTime so the widget can detect taken status regardless
+      // of when the log was actually created.
+      const matched = (state.supplementSchedules ?? []).find(
+        s => s.patientId === patientId
+          && s.status === 'active'
+          && s.name.toLowerCase() === log.name.toLowerCase()
+      );
+      if (matched) {
+        const doseTime = matched.timeWindow && SUPPLEMENT_TIME_WINDOWS[matched.timeWindow]
+          ? SUPPLEMENT_TIME_WINDOWS[matched.timeWindow].start
+          : matched.reminderTime ?? '08:00';
+        localStorage.setItem(`st-supp-taken-${log.date}-${matched.id}-${doseTime}`, '1');
+      }
     },
-    [state.activePatientId]
+    [state.activePatientId, state.supplementSchedules]
   );
 
   const deleteSupplementLog = useCallback((id: string) => {
