@@ -3,7 +3,7 @@
  *
  * Voice flow (mirrors FoodLogModal exactly):
  *   1. Auto-starts recording on mount.
- *   2. 5 s silence → stops, extracts name/dosage/time, pre-fills form — stays open.
+ *   2. 5 s silence → stops, extracts name/time, pre-fills form — stays open.
  *   3. A secondary save listener activates when idle; say "save log", "save it",
  *      "save supplement", or "submit" to confirm. Tap "Save" is always available.
  *   4. 15 s no-speech timeout drops to idle (mic never stuck).
@@ -11,7 +11,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { FlaskConical, Mic, Square, Loader2, ChevronDown, Check } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { SUPPLEMENT_FORMS, SUPPLEMENT_TIME_WINDOWS } from '../types';
+import { SUPPLEMENT_TIME_WINDOWS } from '../types';
 import type { SupplementTimeWindow, SupplementDatabaseEntry } from '../types';
 import { Sheet, Button } from './ui';
 import { getSpeechRecognition } from '../utils/speech';
@@ -22,6 +22,16 @@ function nowTime() {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
+
+const TIME_WINDOW_KEYS = Object.keys(SUPPLEMENT_TIME_WINDOWS) as SupplementTimeWindow[];
+
+const TIME_WINDOW_DISPLAY: Record<SupplementTimeWindow, string> = {
+  morning:   'First Thing 7-8am',
+  breakfast: 'With Breakfast 8-9am',
+  lunch:     'With Lunch 12-2pm',
+  dinner:    'With Dinner 6-8pm',
+  bed:       'Before Bed 9-11pm',
+};
 
 interface Props {
   onClose: () => void;
@@ -53,16 +63,10 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
   }, [initialName, dbEntries]);
 
   const [name,       setName]       = useState(initialName);
-  const [dosage,     setDosage]     = useState(initialQuantity ?? dbMatch?.quantity ?? '');
-  const [form,       setForm]       = useState('');
-  const [date,       setDate]       = useState(todayStr());
-  const [time,       setTime]       = useState(
-    initialTimeWindow
-      ? SUPPLEMENT_TIME_WINDOWS[initialTimeWindow].start
-      : dbMatch
-        ? SUPPLEMENT_TIME_WINDOWS[dbMatch.timeWindow].start
-        : nowTime()
+  const [timeWindow, setTimeWindow] = useState<SupplementTimeWindow | ''>(
+    initialTimeWindow ?? dbMatch?.timeWindow ?? ''
   );
+  const [quantity,   setQuantity]   = useState(initialQuantity ?? dbMatch?.quantity ?? '');
   const [notes,      setNotes]      = useState('');
   const [dictate,    setDictate]    = useState<DictateState>('idle');
   const [dictateErr, setDictateErr] = useState('');
@@ -88,11 +92,22 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
   // ── Select a database entry — fills all fields ────────────────────────────
   const selectDbEntry = useCallback((entry: SupplementDatabaseEntry) => {
     setName(entry.name);
-    setDosage(entry.quantity);
-    setTime(SUPPLEMENT_TIME_WINDOWS[entry.timeWindow].start);
+    setTimeWindow(entry.timeWindow);
+    setQuantity(entry.quantity);
     setShowPicker(false);
     setPickerFilter('');
   }, []);
+
+  // Auto-fill from db when name typed manually
+  function handleNameChange(val: string) {
+    setName(val);
+    if (dbEntries.length > 0) { setShowPicker(true); setPickerFilter(val); }
+    const match = dbEntries.find(e => e.name.toLowerCase() === val.toLowerCase().trim());
+    if (match) {
+      setTimeWindow(match.timeWindow);
+      setQuantity(match.quantity);
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef  = useRef<any>(null);
@@ -124,19 +139,19 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
     }
   }, [clearSilenceTimer, clearNoSpeechTimer]);
 
-  // ── Save logic ────────────────────────────────────────────────────────────
+  // ── Save logic — date/time computed at save time ──────────────────────────
 
   const saveLog = useCallback((
-    n: string, d: string, dos: string, frm: string, t: string, nt: string,
+    n: string, tw: SupplementTimeWindow | '', _qty: string, nt: string,
   ) => {
     if (!n.trim()) return;
+    const date = todayStr();
+    const time = tw ? SUPPLEMENT_TIME_WINDOWS[tw].start : nowTime();
     addSupplementLog({
-      name:   n.trim(),
-      dosage: dos.trim() || undefined,
-      form:   (frm as typeof SUPPLEMENT_FORMS[number]) || undefined,
-      date:   d,
-      time:   t,
-      notes:  nt.trim(),
+      name:  n.trim(),
+      date,
+      time,
+      notes: nt.trim(),
     });
     onClose();
   }, [addSupplementLog, onClose]);
@@ -144,10 +159,10 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
   const saveLogRef = useRef(saveLog);
   useEffect(() => { saveLogRef.current = saveLog; }, [saveLog]);
 
-  const formValuesRef = useRef({ name, dosage, form, date, time, notes });
+  const formValuesRef = useRef({ name, timeWindow, quantity, notes });
   useEffect(() => {
-    formValuesRef.current = { name, dosage, form, date, time, notes };
-  }, [name, dosage, form, date, time, notes]);
+    formValuesRef.current = { name, timeWindow, quantity, notes };
+  }, [name, timeWindow, quantity, notes]);
 
   // ── Stop + extract (NO auto-submit — populates form, keeps modal open) ───
 
@@ -163,17 +178,23 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
     setDictate('analysing');
     try {
       const result = extractSupplementLog(transcript);
-      if (result.name)   setName(result.name);
-      if (result.dosage) setDosage(result.dosage);
-      if (result.time)   setTime(result.time);
-      if (result.notes)  setNotes(result.notes);
+      if (result.name) {
+        setName(result.name);
+        // Auto-fill from db on voice name match
+        const match = dbEntries.find(e => e.name.toLowerCase() === result.name!.toLowerCase().trim());
+        if (match) {
+          setTimeWindow(match.timeWindow);
+          setQuantity(match.quantity);
+        }
+      }
+      if (result.notes) setNotes(result.notes);
       setDictate('idle');
     } catch {
       setDictate('error');
       setDictateErr('Could not process voice note. Please fill in manually.');
     }
     isBusyRef.current = false;
-  }, [stopRecognition]);
+  }, [stopRecognition, dbEntries]);
 
   // ── Start dictation ───────────────────────────────────────────────────────
 
@@ -295,7 +316,7 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
         const t = full.trim().toLowerCase();
         if (SAVE_PHRASES.some(p => t.includes(p))) {
           const fv = formValuesRef.current;
-          saveLogRef.current(fv.name, fv.date, fv.dosage, fv.form, fv.time, fv.notes);
+          saveLogRef.current(fv.name, fv.timeWindow, fv.quantity, fv.notes);
         }
       };
 
@@ -323,8 +344,10 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    saveLog(name, date, dosage, form, time, notes);
+    saveLog(name, timeWindow, quantity, notes);
   }
+
+  const inputCls = 'w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px] bg-white';
 
   return (
     <Sheet
@@ -414,17 +437,17 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
             </div>
           )}
 
-          {/* Text input — still allows freeform entry */}
+          {/* Text input */}
           <div className="relative">
             <input
               type="text"
               value={name}
-              onChange={e => { setName(e.target.value); if (dbEntries.length > 0) setShowPicker(true); setPickerFilter(e.target.value); }}
+              onChange={e => handleNameChange(e.target.value)}
               onFocus={() => { if (dbEntries.length > 0 && !name) setShowPicker(true); }}
               placeholder={dbEntries.length > 0 ? 'Tap above or type a name…' : 'e.g. Vitamin D, Magnesium, Omega-3…'}
               required
               autoFocus={!initialName && dictate !== 'listening'}
-              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px] bg-white pr-10"
+              className={`${inputCls} pr-10`}
             />
             {dbEntries.length > 0 && (
               <button
@@ -463,63 +486,46 @@ export default function SupplementModal({ onClose, initialName = '', initialTime
           )}
         </div>
 
-        {/* ── Description (read-only from database) ────── */}
-        {description && (
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Description <span className="text-slate-400 font-normal">(from list)</span>
-            </label>
-            <div className="w-full border border-slate-200 bg-slate-50 rounded-xl px-3 py-3 text-sm text-slate-600 min-h-[48px]">
-              {description}
-            </div>
-          </div>
-        )}
-
-        {/* ── Dosage & Form ─────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Dosage</label>
-            <input
-              type="text"
-              value={dosage}
-              onChange={e => setDosage(e.target.value)}
-              placeholder="e.g. 1000 IU"
-              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px] bg-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Form</label>
-            <select
-              value={form}
-              onChange={e => setForm(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px]"
-            >
-              <option value="">Select…</option>
-              {SUPPLEMENT_FORMS.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
+        {/* ── Timing chips ─────────────────────────────── */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Timing</label>
+          <div className="flex flex-wrap gap-2">
+            {TIME_WINDOW_KEYS.map(tw => (
+              <button
+                key={tw}
+                type="button"
+                onClick={() => setTimeWindow(timeWindow === tw ? '' : tw)}
+                className={`px-3 py-2.5 rounded-xl text-xs font-medium border transition-colors min-h-[44px] active:scale-[0.98] ${
+                  timeWindow === tw
+                    ? 'bg-teal-500 text-white border-teal-500'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+                }`}
+              >
+                {TIME_WINDOW_DISPLAY[tw]}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* ── Date & Time ──────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Date</label>
-            <input
-              type="date"
-              value={date}
-              max={todayStr()}
-              onChange={e => setDate(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px] bg-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Time</label>
-            <input
-              type="time"
-              value={time}
-              onChange={e => setTime(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px] bg-white"
-            />
+        {/* ── QTY ──────────────────────────────────────── */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">QTY</label>
+          <input
+            type="text"
+            value={quantity}
+            onChange={e => setQuantity(e.target.value)}
+            placeholder="e.g. 2 capsules, 1000mg"
+            className={inputCls}
+          />
+        </div>
+
+        {/* ── What For (read-only from database) ───────── */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">What For</label>
+          <div className={`w-full border border-slate-100 bg-slate-50 rounded-xl px-3 py-3 text-sm min-h-[48px] cursor-default ${
+            description ? 'text-slate-600' : 'text-slate-400 italic'
+          }`}>
+            {description || 'No description available'}
           </div>
         </div>
 
