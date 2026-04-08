@@ -8,6 +8,7 @@ import { useApp } from '../contexts/AppContext';
 import { SUPPLEMENT_TIME_WINDOWS } from '../types';
 import type { SupplementTimeWindow } from '../types';
 import { SectionHeader, Card, Badge } from './ui';
+import { normSupp } from '../utils/supplementMatcher';
 
 type DoseStatus = 'upcoming' | 'due' | 'overdue' | 'taken';
 
@@ -67,9 +68,8 @@ export default function SupplementScheduleWidget({ onAddSchedule }: Props) {
       const doseMins = dh * 60 + dm;
 
       // Taken if any log for this supplement exists today — regardless of time.
-      // Normalise names so STT variants like "Omega-3" match schedule "Omega 3".
-      const normName = (n: string) => n.toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-      const taken = todayLogs.some(l => normName(l.name) === normName(schedule.name));
+      // normSupp handles STT variants: "Omega-3"=="Omega 3", "Creon"~="Creon 25000", etc.
+      const taken = todayLogs.some(l => normSupp(l.name) === normSupp(schedule.name));
 
       let status: DoseStatus;
       if (taken) {

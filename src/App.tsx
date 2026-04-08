@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { fuzzyMatchSupplementName } from './utils/supplementMatcher';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Header from './components/Header';
@@ -51,22 +52,11 @@ function fuzzyMatch<T extends { name: string }>(items: T[], hint: string): T | u
   );
 }
 
-// ─── Supplement name normalisation ───────────────────────────────────────────
-// STT often uses "Omega-3" for a schedule named "Omega 3". Normalise before
-// comparison so hyphens == spaces and runs of whitespace collapse.
-function normSupp(name: string): string {
-  return name.toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
+// ─── Supplement name matching ─────────────────────────────────────────────────
+// Shared fuzzy matcher with Levenshtein token matching — handles STT variants
+// like "Omega-3"→"Omega 3", "Crayon"→"Creon 25000", "Thistle Milk"→"Milk Thistle combo"
 function fuzzyMatchSchedule<T extends { name: string }>(items: T[], spoken: string): T | undefined {
-  const s = normSupp(spoken);
-  if (s.length < 2) return undefined;
-  return (
-    items.find(i => normSupp(i.name) === s) ??
-    items.find(i => normSupp(i.name).startsWith(s)) ??
-    items.find(i => s.startsWith(normSupp(i.name)) && i.name.length >= 3) ??
-    items.find(i => normSupp(i.name).includes(s) || s.includes(normSupp(i.name)))
-  );
+  return fuzzyMatchSupplementName(spoken, items);
 }
 
 function AppContent() {

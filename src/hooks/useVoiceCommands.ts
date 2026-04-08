@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSpeechRecognition } from '../utils/speech';
 import type { MealType, MealPrefill, SupplementTimeWindow, SupplementDatabaseEntry } from '../types';
 import { extractTimeFromTranscript } from '../utils/foodLogExtractor';
+import { normSupp, fuzzyMatchSupplementName } from '../utils/supplementMatcher';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -398,28 +399,12 @@ function extractSupplementTakenPrefill(
   return { name: toTitleCase(raw) };
 }
 
-/**
- * Normalize supplement name for comparison.
- * Converts hyphens to spaces and collapses whitespace so
- * "Omega-3" matches "Omega 3", "D3+K2" matches "D3 + K2", etc.
- */
-function normSupp(name: string): string {
-  return name.toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 /** Fuzzy-match spoken text against supplement database names. */
 function fuzzyMatchSupplement(
   spoken: string,
   entries: SupplementDatabaseEntry[],
 ): SupplementDatabaseEntry | undefined {
-  const s = normSupp(spoken);
-  if (s.length < 2) return undefined;
-  return (
-    entries.find(e => normSupp(e.name) === s) ??
-    entries.find(e => normSupp(e.name).startsWith(s)) ??
-    entries.find(e => s.startsWith(normSupp(e.name)) && e.name.length >= 3) ??
-    entries.find(e => normSupp(e.name).includes(s) || s.includes(normSupp(e.name)))
-  );
+  return fuzzyMatchSupplementName(spoken, entries);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
