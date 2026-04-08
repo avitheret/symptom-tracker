@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { getSpeechRecognition } from '../utils/speech';
 import type { MealType, MealPrefill, SupplementTimeWindow, SupplementDatabaseEntry } from '../types';
 import { extractTimeFromTranscript } from '../utils/foodLogExtractor';
-import { normSupp, fuzzyMatchSupplementName } from '../utils/supplementMatcher';
+import { fuzzyMatchSupplementName } from '../utils/supplementMatcher';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
