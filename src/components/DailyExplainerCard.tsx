@@ -20,10 +20,12 @@ export default function DailyExplainerCard() {
   const [error, setError]     = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
 
-  const patientEntries    = state.entries.filter(e => e.patientId === state.activePatientId);
-  const patientCheckIns   = state.checkIns.filter(c => c.patientId === state.activePatientId);
-  const patientTriggers   = state.triggerLogs.filter(t => t.patientId === state.activePatientId);
-  const patientMeds       = state.medicationLogs.filter(m => m.patientId === state.activePatientId);
+  const patientEntries       = state.entries.filter(e => e.patientId === state.activePatientId);
+  const patientCheckIns      = state.checkIns.filter(c => c.patientId === state.activePatientId);
+  const patientTriggers      = state.triggerLogs.filter(t => t.patientId === state.activePatientId);
+  const patientMeds          = state.medicationLogs.filter(m => m.patientId === state.activePatientId);
+  const patientSuppLogs      = (state.supplementLogs ?? []).filter(s => s.patientId === state.activePatientId);
+  const patientSuppSchedules = (state.supplementSchedules ?? []).filter(s => s.patientId === state.activePatientId);
 
   const run = useCallback(async (force = false) => {
     if (!activePatient) return;
@@ -35,10 +37,12 @@ export default function DailyExplainerCard() {
         patientName: activePatient.name,
         diagnosis:   activePatient.diagnosis ?? '',
         conditions,
-        entries:         patientEntries,
-        checkIns:        patientCheckIns,
-        triggerLogs:     patientTriggers,
-        medicationLogs:  patientMeds,
+        entries:              patientEntries,
+        checkIns:             patientCheckIns,
+        triggerLogs:          patientTriggers,
+        medicationLogs:       patientMeds,
+        supplementLogs:       patientSuppLogs,
+        supplementSchedules:  patientSuppSchedules,
         forceRefresh: force,
       });
       setResult(explanation);
@@ -48,7 +52,7 @@ export default function DailyExplainerCard() {
     } finally {
       setLoading(false);
     }
-  }, [activePatient, conditions, patientEntries, patientCheckIns, patientTriggers, patientMeds]);
+  }, [activePatient, conditions, patientEntries, patientCheckIns, patientTriggers, patientMeds, patientSuppLogs, patientSuppSchedules]);
 
   // ── No result yet — show the button ──────────────────────────────────────────
   if (!result && !loading && !error) {
@@ -91,7 +95,7 @@ export default function DailyExplainerCard() {
           <Loader2 size={18} className="text-violet-500 animate-spin flex-shrink-0" />
           <div>
             <p className="text-sm font-semibold text-slate-800">Analysing your day…</p>
-            <p className="text-xs text-slate-400">Looking at symptoms, sleep, stress, and weather</p>
+            <p className="text-xs text-slate-400">Looking at symptoms, supplements, sleep, stress, and weather</p>
           </div>
         </div>
       </div>

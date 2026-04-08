@@ -2,9 +2,11 @@
  * dailyExplainer — "Why am I feeling like this?" engine
  * Gathers all data for today + yesterday and asks Claude to explain likely causes.
  */
-import type { TrackingEntry, DailyCheckIn, TriggerLog, MedicationLog, Condition } from '../types';
+import type { TrackingEntry, DailyCheckIn, TriggerLog, MedicationLog, Condition, SupplementLog, SupplementSchedule } from '../types';
+import { SUPPLEMENT_TIME_WINDOWS } from '../types';
 import { getObservationsForDate, getLatestObservation } from './weatherService';
 import { daysAgoStr } from './analytics';
+import { normSupp } from './supplementMatcher';
 
 // ── Output types ──────────────────────────────────────────────────────────────
 
@@ -67,11 +69,14 @@ function buildPrompt(params: {
   todayTriggers: TriggerLog[];
   todayMeds: MedicationLog[];
   recentEntries: TrackingEntry[];   // last 7 days for context
+  todaySupplementLogs: SupplementLog[];
+  activeSupplementSchedules: SupplementSchedule[];
 }): string {
   const {
     today, yesterday, patientName, diagnosis, conditions,
     todayEntries, todayCheckIn, yesterdayCheckIn,
     todayTriggers, todayMeds, recentEntries,
+    todaySupplementLogs, activeSupplementSchedules,
   } = params;
 
   // Weather for today
@@ -108,6 +113,34 @@ function buildPrompt(params: {
     ? 'No medications logged today.'
     : todayMeds.map(m => `${m.name}${m.dosage ? ` ${m.dosage}` : ''}`).join(', ');
 
+  // Supplements taken today
+  const suppTakenLines = todaySupplementLogs.length === 0
+    ? 'None logged today.'
+    : todaySupplementLogs.map(s => {
+        const timeLabel = (() => {
+          for (const tw of Object.values(SUPPLEMENT_TIME_WINDOWS)) {
+            const [sh] = tw.start.split(':').map(Number);
+            const [eh] = tw.end.split(':').map(Number);
+            const [lh] = s.time.split(':').map(Number);
+            if (lh >= sh && lh <= eh) return tw.label;
+          }
+          return s.time;
+        })();
+        return `${s.name}${s.dosage ? ` (${s.dosage})` : ''} — ${timeLabel}`;
+      }).join(', ');
+
+  // Scheduled supplements NOT taken today (possibly missed doses)
+  const missedSupps = activeSupplementSchedules.filter(
+    sched => sched.frequency !== 'as_needed' &&
+    !todaySupplementLogs.some(log => normSupp(log.name) === normSupp(sched.name))
+  );
+  const suppMissedLines = missedSupps.length === 0
+    ? 'All scheduled supplements taken.'
+    : missedSupps.map(s => {
+        const tw = s.timeWindow ? SUPPLEMENT_TIME_WINDOWS[s.timeWindow] : undefined;
+        return `${s.name}${s.quantity ? ` (${s.quantity})` : ''}${tw ? ` — scheduled ${tw.label}` : ''}`;
+      }).join(', ');
+
   // Recent pattern context (last 7 days, excluding today)
   const recentNonToday = recentEntries.filter(e => e.date !== today);
   const recentSymptomDays = new Set(recentNonToday.map(e => e.date)).size;
@@ -126,6 +159,7 @@ IMPORTANT RULES:
 - Keep each cause bullet point short (under 10 words)
 - If there are no symptoms today, say so positively
 - End with the single most likely trigger/cause
+- Consider supplement compliance: missed doses of key supplements (e.g. enzymes, anti-inflammatories) may be contributing factors; taken supplements may be protective or therapeutic
 
 PATIENT: ${patientName}
 MEDICAL BACKGROUND: ${diagnosis || 'Not specified'}
@@ -137,6 +171,8 @@ ${symptomLines}
 
 TRIGGERS LOGGED: ${triggerLines}
 MEDICATIONS: ${medLines}
+SUPPLEMENTS TAKEN: ${suppTakenLines}
+SUPPLEMENTS MISSED (scheduled but not logged): ${suppMissedLines}
 ${formatCheckIn(todayCheckIn, 'CHECK-IN')}
 WEATHER: ${weatherSummary}
 
@@ -175,6 +211,8 @@ export async function explainToday(params: {
   checkIns: DailyCheckIn[];
   triggerLogs: TriggerLog[];
   medicationLogs: MedicationLog[];
+  supplementLogs?: SupplementLog[];
+  supplementSchedules?: SupplementSchedule[];
   forceRefresh?: boolean;
 }): Promise<DailyExplanation> {
   const today = daysAgoStr(0);
@@ -196,6 +234,8 @@ export async function explainToday(params: {
     e.date >= sevenDaysAgo.toISOString().slice(0, 10) &&
     e.reviewStatus !== 'disapproved'
   );
+  const todaySupplementLogs      = (params.supplementLogs ?? []).filter(s => s.date === today);
+  const activeSupplementSchedules = (params.supplementSchedules ?? []).filter(s => s.status === 'active');
 
   // Build condition color map for richer display
   const conditionColorMap = Object.fromEntries(params.conditions.map(c => [c.name, c.color]));
@@ -207,6 +247,7 @@ export async function explainToday(params: {
     conditions: params.conditions,
     todayEntries, todayCheckIn, yesterdayCheckIn,
     todayTriggers, todayMeds, recentEntries,
+    todaySupplementLogs, activeSupplementSchedules,
   });
 
   const response = await fetch('/.netlify/functions/claude-proxy', {
