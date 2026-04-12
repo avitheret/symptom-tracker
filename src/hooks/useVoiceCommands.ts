@@ -462,6 +462,7 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
   }
 
   const [state, setState] = useState<VoiceState>(SR ? 'wake-listening' : 'unsupported');
+  const [transcript, setTranscript] = useState('');
 
   const recognitionRef = useRef<AnySpeechRecognition | null>(null);
   const stateRef = useRef<VoiceState>(state);
@@ -670,6 +671,7 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
           try { recognition.abort(); } catch (_) { /* onend will restart */ }
         }
       } else if (stateRef.current === 'command-listening') {
+        setTranscript(partial);
         const match = matchCommand(partial);
 
         // ── Shared confirm helper ───────────────────────────────────────────
@@ -685,6 +687,7 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
           vibrate(120);
           transcriptBufferRef.current = [];
           try { recognition.abort(); } catch (_) { /* onend will restart */ }
+          setTranscript('');
           setState('confirmed');
           onCommandRef.current(command, label, prefill, mealPrefill, supplementPrefill, supplementTakenPrefill);
           confirmTimerRef.current = setTimeout(() => {
@@ -919,6 +922,7 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
       transcriptBufferRef.current = [];
       vibrate(80);
       setState('command-listening');
+      setTranscript('');
       // Abort so event.results resets
       stopRecognition();
       commandTimerRef.current = setTimeout(() => {
@@ -931,11 +935,13 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
       stopRecognition();
       transcriptBufferRef.current = [];
       setState('wake-listening');
+      setTranscript('');
     }
   }, [state, enableWakeWord, clearTimers, stopRecognition]);
 
   return {
     state,
+    transcript,
     isSupported: state !== 'unsupported',
     isActive: state !== 'idle' && state !== 'unsupported',
     enableWakeWord,

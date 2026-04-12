@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed, FlaskConical, Mic } from 'lucide-react';
+import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed, FlaskConical, Mic, Zap as ZapIcon } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import TrackingModal from './TrackingModal';
@@ -17,7 +17,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.6.0';
+const APP_VERSION = 'v3.7.1';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -259,7 +259,7 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
 
 export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onEditMeal, onOpenMedSchedule, onOpenSupplementSchedule, onVoicePress }: Props) {
   const { state, setView, selectCondition, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient, loadSmallDemoData, removeDemoData } = useApp();
-  const { user } = useAuth();
+  useAuth();
   const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
   const [showAddCondition,     setShowAddCondition]     = useState(false);
   const [showCustomizer,       setShowCustomizer]       = useState(false);
@@ -316,59 +316,165 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
   const show = (id: WidgetId) => visibleWidgets.includes(id);
 
   const hour        = new Date().getHours();
-  const greeting    = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName   = user?.name?.split(' ')[0] ?? activePatient?.name ?? '';
-  const displayGreeting = firstName && firstName.toLowerCase() !== 'me'
-    ? `${greeting}, ${firstName}!`
-    : `${greeting}!`;
   const todayLabel  = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     /* Constrain to phone-friendly width — centred on desktop */
-    <div className="max-w-2xl mx-auto px-4 py-5 space-y-6">
+    <div className="bg-[#1a1f3c] min-h-screen max-w-2xl mx-auto px-4 pb-24 space-y-5 pt-3">
 
-      {/* ── Page header ──────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Date header */}
+      <div className="flex items-start justify-between gap-4 pt-2">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 leading-tight">{displayGreeting}</h1>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <h1 className="text-3xl font-bold text-white leading-tight">
+            {hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'},
+          </h1>
+          <p className="text-white/60 text-sm mt-0.5">
             {todayLabel}
-            <span className="text-slate-300 ml-2">{APP_VERSION}</span>
+            <span className="text-white/30 ml-2">{APP_VERSION}</span>
           </p>
         </div>
         <button
           onClick={() => setShowCustomizer(true)}
           aria-label="Customise dashboard"
-          title="Customise dashboard"
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-colors min-h-[36px] flex-shrink-0 mt-1"
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white/50 hover:text-white/80 border border-white/20 rounded-xl hover:bg-white/10 transition-colors min-h-[36px] flex-shrink-0 mt-1"
         >
           <Settings size={13} />
           <span className="hidden sm:inline">Customise</span>
         </button>
       </div>
 
-      {/* ── Voice hero ───────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl px-5 py-4 flex items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800">Speak a command</p>
-          <p className="text-xs text-slate-500 mt-0.5">Say 'Hey Tracker' to log hands-free</p>
+      {/* 7-day calendar strip */}
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1">
+        {Array.from({ length: 7 }, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - 3 + i);
+          const isToday = i === 3;
+          const dayLabel = d.toLocaleDateString('en-GB', { weekday: 'short' });
+          const dayNum = d.getDate();
+          return (
+            <div
+              key={i}
+              className={`flex flex-col items-center gap-1 flex-shrink-0 w-11 py-2 rounded-2xl transition-colors ${
+                isToday
+                  ? 'bg-violet-500 text-white'
+                  : 'text-white/40'
+              }`}
+            >
+              <span className="text-[11px] font-medium">{dayLabel}</span>
+              <span className={`text-sm font-bold ${isToday ? 'text-white' : 'text-white/60'}`}>{dayNum}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Today's summary cards */}
+      <div className="space-y-2.5">
+        {/* Mood card */}
+        {todayCheckIn && (
+          <div className="bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-amber-400/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-2xl">{
+                todayCheckIn.mood >= 8 ? '😊' :
+                todayCheckIn.mood >= 6 ? '🙂' :
+                todayCheckIn.mood >= 4 ? '😐' :
+                '😞'
+              }</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-semibold text-sm">Mood</p>
+              <p className="text-white/50 text-xs mt-0.5 truncate">
+                {todayCheckIn.notes || `Energy ${todayCheckIn.energy}/10 · Sleep ${todayCheckIn.sleepHours}h`}
+              </p>
+            </div>
+            <span className={`text-lg font-bold flex-shrink-0 ${
+              todayCheckIn.mood >= 7 ? 'text-emerald-400' :
+              todayCheckIn.mood >= 5 ? 'text-amber-400' : 'text-rose-400'
+            }`}>
+              {todayCheckIn.mood}
+            </span>
+          </div>
+        )}
+
+        {/* Symptoms card */}
+        {(() => {
+          const today2 = new Date().toISOString().slice(0, 10);
+          const todayEntries = patientEntries.filter(e => e.date === today2);
+          if (todayEntries.length === 0) return null;
+          const topSymptoms = todayEntries
+            .sort((a, b) => b.severity - a.severity)
+            .slice(0, 3)
+            .map(e => e.symptomName)
+            .join(', ');
+          const maxSev = Math.max(...todayEntries.map(e => e.severity));
+          return (
+            <div className="bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-rose-400/20 flex items-center justify-center flex-shrink-0">
+                <ZapIcon size={22} className="text-rose-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold text-sm">Symptoms</p>
+                <p className="text-white/50 text-xs mt-0.5 truncate">{topSymptoms}</p>
+              </div>
+              <span className={`text-lg font-bold flex-shrink-0 ${
+                maxSev >= 7 ? 'text-rose-400' :
+                maxSev >= 5 ? 'text-amber-400' : 'text-emerald-400'
+              }`}>
+                {maxSev}
+              </span>
+            </div>
+          );
+        })()}
+
+        {/* Triggers / Factors card */}
+        {(() => {
+          const today3 = new Date().toISOString().slice(0, 10);
+          const todayTriggers = state.triggerLogs.filter(
+            t => t.patientId === state.activePatientId && t.date === today3
+          );
+          if (todayTriggers.length === 0) return null;
+          const allTriggerNames = todayTriggers.flatMap(t => t.triggers).slice(0, 5);
+          return (
+            <div className="bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-violet-400/20 flex items-center justify-center flex-shrink-0">
+                <TrendingUp size={22} className="text-violet-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold text-sm">Factors</p>
+                <p className="text-white/50 text-xs mt-0.5 truncate">{allTriggerNames.join(', ')}</p>
+              </div>
+              <span className="text-sm font-semibold text-white/40 flex-shrink-0">
+                {allTriggerNames.length} items
+              </span>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Voice CTA */}
+      <div className="flex flex-col items-center gap-3 py-4">
+        <div className="relative">
+          {/* Outer ring */}
+          <div className="absolute inset-[-16px] rounded-full border border-white/10" />
+          {/* Middle ring */}
+          <div className="absolute inset-[-8px] rounded-full border border-white/15" />
+          {/* Button */}
+          <button
+            onClick={onVoicePress}
+            className="relative w-20 h-20 rounded-full bg-[#3d4a9e] border-2 border-white/20 flex items-center justify-center shadow-2xl active:scale-95 transition-transform"
+          >
+            <Mic size={32} className="text-white" />
+          </button>
         </div>
-        <button
-          onClick={() => onVoicePress?.()}
-          aria-label="Activate voice command"
-          className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform"
-        >
-          <Mic size={24} />
-        </button>
+        <p className="text-white/40 text-xs font-medium mt-2">Say "Hey Tracker" to log hands-free</p>
       </div>
 
       {/* ── Quick-action buttons ──────────────────────────── */}
       <div className="grid grid-cols-4 gap-2">
         {[
-          { label: 'Check In',  Icon: Heart,             bg: 'bg-rose-50',    border: 'border-rose-100',    dot: 'bg-rose-100',    icon: 'text-rose-500',    text: 'text-rose-700',    onClick: onOpenCheckIn },
-          { label: 'Triggers',  Icon: Zap,               bg: 'bg-amber-50',   border: 'border-amber-100',   dot: 'bg-amber-100',   icon: 'text-amber-500',   text: 'text-amber-700',   onClick: onOpenTrigger },
-          { label: 'Meds',      Icon: Pill,              bg: 'bg-violet-50',  border: 'border-violet-100',  dot: 'bg-violet-100',  icon: 'text-violet-500',  text: 'text-violet-700',  onClick: onOpenMedication },
-          { label: 'Meal',      Icon: UtensilsCrossed,   bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-100', icon: 'text-emerald-500', text: 'text-emerald-700', onClick: onOpenFoodLog },
+          { label: 'Check In',  Icon: Heart,           bg: 'bg-rose-500/20',    border: 'border-rose-500/30',    dot: 'bg-rose-500/20',    icon: 'text-rose-300',    text: 'text-rose-300',    onClick: onOpenCheckIn },
+          { label: 'Triggers',  Icon: Zap,             bg: 'bg-amber-500/20',   border: 'border-amber-500/30',   dot: 'bg-amber-500/20',   icon: 'text-amber-300',   text: 'text-amber-300',   onClick: onOpenTrigger },
+          { label: 'Meds',      Icon: Pill,            bg: 'bg-violet-500/20',  border: 'border-violet-500/30',  dot: 'bg-violet-500/20',  icon: 'text-violet-300',  text: 'text-violet-300',  onClick: onOpenMedication },
+          { label: 'Meal',      Icon: UtensilsCrossed, bg: 'bg-emerald-500/20', border: 'border-emerald-500/30', dot: 'bg-emerald-500/20', icon: 'text-emerald-300', text: 'text-emerald-300', onClick: onOpenFoodLog },
         ].map(({ label, Icon, bg, border, dot, icon, text, onClick }) => (
           <button
             key={label}
@@ -387,14 +493,14 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
       {todayCheckIn && (
         <div className="grid grid-cols-4 gap-2">
           {[
-            { label: 'Health', value: todayCheckIn.healthScore, color: 'text-rose-600', bg: 'bg-rose-50' },
-            { label: 'Energy', value: todayCheckIn.energy, color: 'text-amber-600', bg: 'bg-amber-50' },
-            { label: 'Mood', value: todayCheckIn.mood, color: 'text-violet-600', bg: 'bg-violet-50' },
-            { label: 'Sleep', value: `${todayCheckIn.sleepHours}h`, color: 'text-blue-600', bg: 'bg-blue-50' },
+            { label: 'Health', value: todayCheckIn.healthScore, color: 'text-rose-300', bg: 'bg-rose-500/15' },
+            { label: 'Energy', value: todayCheckIn.energy, color: 'text-amber-300', bg: 'bg-amber-500/15' },
+            { label: 'Mood', value: todayCheckIn.mood, color: 'text-violet-300', bg: 'bg-violet-500/15' },
+            { label: 'Sleep', value: `${todayCheckIn.sleepHours}h`, color: 'text-blue-300', bg: 'bg-blue-500/15' },
           ].map(({ label, value, color, bg }) => (
             <div key={label} className={`${bg} rounded-2xl py-3 px-2 text-center`}>
               <p className={`text-lg font-bold ${color}`}>{value}</p>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">{label}</p>
+              <p className="text-xs text-white/40 mt-0.5 font-medium">{label}</p>
             </div>
           ))}
         </div>
@@ -622,18 +728,12 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
       {/* ── Demo data ────────────────────────────────────── */}
       <div className="flex items-center justify-center gap-3 pt-2 pb-1">
         {!hasDemoData && (
-          <button
-            onClick={loadSmallDemoData}
-            className="text-xs font-medium text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors"
-          >
+          <button onClick={loadSmallDemoData} className="text-xs font-medium text-white/30 hover:text-white/60 underline underline-offset-2 transition-colors">
             Load demo data
           </button>
         )}
         {hasDemoData && (
-          <button
-            onClick={removeDemoData}
-            className="text-xs font-medium text-slate-400 hover:text-red-500 underline underline-offset-2 transition-colors"
-          >
+          <button onClick={removeDemoData} className="text-xs font-medium text-white/30 hover:text-rose-400 underline underline-offset-2 transition-colors">
             Remove demo data
           </button>
         )}

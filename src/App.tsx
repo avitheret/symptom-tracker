@@ -20,6 +20,7 @@ import FoodLogModal from './components/FoodLogModal';
 import MealsView from './components/MealsView';
 import TrackingModal from './components/TrackingModal';
 import VoiceButton from './components/VoiceButton';
+import VoiceEntryOverlay from './components/VoiceEntryOverlay';
 import QuickAddFAB from './components/QuickAddFAB';
 import QuickLogSheet from './components/QuickLogSheet';
 import VoiceCommandToast from './components/VoiceCommandToast';
@@ -367,7 +368,7 @@ function AppContent() {
     }
   }, [setView, getPatientConditions, state.activePatientId, state.supplementSchedules, state.medicationSchedules, addEntry, addSupplementLog, addMedicationLog]);
 
-  const { state: voiceState, manualActivate, disableWakeWord, enableWakeWord } = useVoiceCommands({
+  const { state: voiceState, transcript: voiceTranscript, manualActivate, disableWakeWord, enableWakeWord } = useVoiceCommands({
     onCommand: handleVoiceCommand,
     supplementDatabase: state.supplementDatabase,
   });
@@ -439,7 +440,7 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className={`min-h-screen flex flex-col ${state.view === 'dashboard' ? 'bg-[#1a1f3c]' : 'bg-slate-50'}`}>
       <Header
         onOpenAuth={() => setShowAuth(true)}
         onOpenProfile={() => setShowProfile(true)}
@@ -635,6 +636,13 @@ function AppContent() {
       {showOnboarding && (
         <Onboarding onDone={() => setShowOnboarding(false)} />
       )}
+
+      {/* Full-screen voice entry overlay */}
+      <VoiceEntryOverlay
+        voiceState={voiceState}
+        transcript={voiceTranscript}
+        onStop={manualActivate}
+      />
     </div>
   );
 }
