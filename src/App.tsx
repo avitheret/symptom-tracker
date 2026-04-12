@@ -31,11 +31,15 @@ import SupplementModal from './components/SupplementModal';
 import SupplementScheduleModal from './components/SupplementScheduleModal';
 import ExtractionReviewSheet from './components/ExtractionReviewSheet';
 import MedScheduleModal from './components/MedScheduleModal';
+import MedScheduleList from './components/MedScheduleList';
+import SubNav from './components/SubNav';
 import AdminPanel from './components/AdminPanel';
 import { useVoiceCommands, type VoiceCommand, type SymptomPrefill, type SupplementPrefill, type SupplementTakenPrefill } from './hooks/useVoiceCommands';
 import type { MealPrefill } from './types';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useMedScheduleSync } from './hooks/useMedScheduleSync';
+import { useSupplementScheduleSync } from './hooks/useSupplementScheduleSync';
+import { useCloudStateSync } from './hooks/useCloudStateSync';
 import { extractFromNote } from './utils/noteExtractor';
 import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType, SupplementSchedule } from './types';
 
@@ -60,7 +64,7 @@ function fuzzyMatchSchedule<T extends { name: string }>(items: T[], spoken: stri
 }
 
 function AppContent() {
-  const { state, setView, getPatientConditions, confirmNoteExtraction, updateNoteExtraction, addEntry, addSupplementLog, loadSupplementDatabase } = useApp();
+  const { state, setView, getPatientConditions, confirmNoteExtraction, updateNoteExtraction, addEntry, addSupplementLog, addMedicationLog, loadSupplementDatabase } = useApp();
   const { isAuthenticated, needsOnboarding, isLoading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -101,6 +105,11 @@ function AppContent() {
       setShowAuth(true);
     }
   }, [isAuthenticated, needsOnboarding]);
+
+  // Dismiss the onboarding screen when onboarding completes (e.g. via AuthModal flow)
+  useEffect(() => {
+    if (!needsOnboarding) setShowOnboarding(false);
+  }, [needsOnboarding]);
 
   // ── Food log opener ───────────────────────────────────────────────────────
   // iOS only allows one SpeechRecognition at a time — must stop the wake-word
@@ -229,31 +238,102 @@ function AppContent() {
       case 'MARK_SUPPLEMENT_TAKEN': {
         // No modal — just log directly and show inline toast
         if (!supplementTakenPrefill?.name) {
-          // No name extracted — show feedback
-          setInlineToast('Couldn\'t identify supplement');
+          setInlineToast('Couldn\'t identify supplement or medication');
           if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
           inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
           break;
         }
-        // Fuzzy match against supplement schedules (normalised: hyphens == spaces)
-        const schedules = (state.supplementSchedules ?? []).filter(
+        const now = new Date();
+        const nowDate = now.toISOString().slice(0, 10);
+        const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+        // 1. Try supplement schedules first
+        const suppSchedules = (state.supplementSchedules ?? []).filter(
           s => s.patientId === state.activePatientId && s.status === 'active'
         );
-        const matched = fuzzyMatchSchedule(schedules, supplementTakenPrefill.name);
-        const finalName = matched?.name ?? supplementTakenPrefill.name;
-        const now = new Date();
-        addSupplementLog({
-          name: finalName,
-          date: now.toISOString().slice(0, 10),
-          time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
-          notes: 'Voice logged · mark taken',
-          sourceTranscript: label,
-        });
-        // Show inline toast
-        setInlineToast(`✓ ${finalName} marked taken`);
+        const matchedSupp = fuzzyMatchSchedule(suppSchedules, supplementTakenPrefill.name);
+
+        if (matchedSupp) {
+          addSupplementLog({
+            name: matchedSupp.name,
+            dosage: matchedSupp.dosage,
+            form: matchedSupp.form,
+            date: nowDate,
+            time: nowTime,
+            notes: 'Voice logged · mark taken',
+            sourceTranscript: label,
+          });
+          setInlineToast(`✓ ${matchedSupp.name} marked taken`);
+        } else {
+          // 2. No supplement match — try medication schedules
+          const medSchedules = (state.medicationSchedules ?? []).filter(
+            s => s.patientId === state.activePatientId && s.status === 'active'
+          );
+          const matchedMed = fuzzyMatchSchedule(medSchedules, supplementTakenPrefill.name);
+
+          if (matchedMed) {
+            addMedicationLog({
+              name: matchedMed.name,
+              type: 'medication',
+              dosage: matchedMed.dosage,
+              route: matchedMed.route,
+              date: nowDate,
+              time: nowTime,
+              conditionId: matchedMed.conditionId,
+              conditionName: matchedMed.conditionName,
+              effectiveness: 'moderate',
+              notes: 'Voice logged · mark taken',
+            });
+            setInlineToast(`✓ ${matchedMed.name} marked taken`);
+          } else {
+            // 3. No schedule match at all — log with spoken name as supplement
+            addSupplementLog({
+              name: supplementTakenPrefill.name,
+              date: nowDate,
+              time: nowTime,
+              notes: 'Voice logged · mark taken',
+              sourceTranscript: label,
+            });
+            setInlineToast(`✓ ${supplementTakenPrefill.name} marked taken`);
+          }
+        }
+
         if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
         inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
         // Do NOT call disableWakeWord() — keep listening
+        break;
+      }
+      case 'MARK_MEDICATION_TAKEN': {
+        // No modal — log directly and show inline toast
+        if (!supplementTakenPrefill?.name) {
+          setInlineToast('Couldn\'t identify medication');
+          if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+          inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+          break;
+        }
+        // Fuzzy match against medication schedules
+        const medSchedules = (state.medicationSchedules ?? []).filter(
+          s => s.patientId === state.activePatientId && s.status === 'active'
+        );
+        const matchedMed = fuzzyMatchSchedule(medSchedules, supplementTakenPrefill.name);
+        const medName = matchedMed?.name ?? supplementTakenPrefill.name;
+        const medNow = new Date();
+        addMedicationLog({
+          name: medName,
+          type: 'medication',
+          dosage: matchedMed?.dosage,
+          route: matchedMed?.route,
+          date: medNow.toISOString().slice(0, 10),
+          time: `${String(medNow.getHours()).padStart(2, '0')}:${String(medNow.getMinutes()).padStart(2, '0')}`,
+          conditionId: matchedMed?.conditionId,
+          conditionName: matchedMed?.conditionName,
+          effectiveness: 'moderate',
+          notes: 'Voice logged · mark taken',
+        });
+        setInlineToast(`✓ ${medName} marked taken`);
+        if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+        inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+        // Keep wake word active — no disableWakeWord()
         break;
       }
       case 'OPEN_SUPPLEMENTS':
@@ -285,7 +365,7 @@ function AppContent() {
       case 'CANCEL':
         break;
     }
-  }, [setView, getPatientConditions, state.activePatientId, state.supplementSchedules, addEntry, addSupplementLog]);
+  }, [setView, getPatientConditions, state.activePatientId, state.supplementSchedules, state.medicationSchedules, addEntry, addSupplementLog, addMedicationLog]);
 
   const { state: voiceState, manualActivate, disableWakeWord, enableWakeWord } = useVoiceCommands({
     onCommand: handleVoiceCommand,
@@ -297,6 +377,12 @@ function AppContent() {
 
   // ── Sync medication schedules to Supabase (for push notifications) ──────
   useMedScheduleSync();
+
+  // ── Sync supplement schedules to Supabase (for push notifications) ──────
+  useSupplementScheduleSync();
+
+  // ── Full cross-device state sync ──────────────────────────────────────────
+  useCloudStateSync();
 
   // ── Load supplement database from Supabase on auth + patient change ──────
   useEffect(() => {
@@ -347,6 +433,11 @@ function AppContent() {
     );
   }
 
+  // Mandatory login gate — no app access without an account.
+  if (!isAuthenticated) {
+    return <AuthModal onClose={() => {}} required />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Header
@@ -354,6 +445,8 @@ function AppContent() {
         onOpenProfile={() => setShowProfile(true)}
         onOpenAddPatient={() => setShowAddPatient(true)}
       />
+
+      <SubNav />
 
       {/* Main content — pb-20 on mobile for bottom nav clearance */}
       <main className="flex-1 pb-20 lg:pb-0">
@@ -367,9 +460,18 @@ function AppContent() {
             onOpenMedSchedule={() => { setEditingSchedule(undefined); setShowMedSchedule(true); }}
             onEditMedSchedule={(s) => { setEditingSchedule(s); setShowMedSchedule(true); }}
             onOpenSupplementSchedule={() => { setEditingSupplementSchedule(undefined); setShowSupplementSchedule(true); }}
+            onVoicePress={manualActivate}
           />
         )}
         {state.view === 'conditions' && <ConditionsList />}
+        {state.view === 'meds' && (
+          <div className="max-w-2xl mx-auto px-4 py-5 pb-24">
+            <MedScheduleList
+              onAdd={() => { setEditingSchedule(undefined); setShowMedSchedule(true); }}
+              onEdit={(s) => { setEditingSchedule(s); setShowMedSchedule(true); }}
+            />
+          </div>
+        )}
         {state.view === 'meals' && <MealsView onOpenFoodLog={openFoodLog} onEditMeal={openFoodLogForEdit} />}
         {state.view === 'reports' && (
           <Reports />
@@ -464,6 +566,8 @@ function AppContent() {
         <QuickLogSheet
           referenceNote={quickLogNoteRef}
           onClose={() => { setShowQuickLog(false); setQuickLogNoteRef(undefined); }}
+          onVoicePress={manualActivate}
+          onOpenCheckIn={() => setShowCheckIn(true)}
         />
       )}
       {showNoteComposer && (

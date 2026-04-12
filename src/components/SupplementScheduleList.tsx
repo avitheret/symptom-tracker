@@ -1,6 +1,9 @@
 import { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Pause, Play, Clock } from 'lucide-react';
+import { Plus, Pencil, Trash2, Pause, Play, Clock, Bell, BellOff, Smartphone } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
+import { usePushSubscription } from '../hooks/usePushSubscription';
+import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications';
 import { SUPPLEMENT_TIME_WINDOWS } from '../types';
 import type { SupplementSchedule, SupplementTimeWindow } from '../types';
 import { SectionHeader, Card, Badge, EmptyState, Button } from './ui';
@@ -17,8 +20,11 @@ interface Props {
 }
 
 export default function SupplementScheduleList({ onAdd, onEdit }: Props) {
-  const { state, updateSupplementSchedule, deleteSupplementSchedule } = useApp();
+  const { state, updateSupplementSchedule, deleteSupplementSchedule, setNotificationPrefs } = useApp();
+  const { isAuthenticated } = useAuth();
+  const { isSubscribed, isSupported: pushSupported, loading: pushLoading, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } = usePushSubscription();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   const schedules = useMemo(
     () => (state.supplementSchedules ?? []).filter(s => s.patientId === state.activePatientId),
@@ -35,6 +41,25 @@ export default function SupplementScheduleList({ onAdd, onEdit }: Props) {
       .filter(k => groups[k]?.length)
       .map(k => ({ key: k, label: TIME_WINDOW_LABELS[k], items: groups[k] }));
   }, [schedules]);
+
+  async function handleToggleNotifications() {
+    if (state.notificationPrefs.enabled) {
+      setNotificationPrefs({ enabled: false });
+      return;
+    }
+    if (!isNotificationSupported()) { setPermissionDenied(true); return; }
+    const permission = getNotificationPermission();
+    if (permission === 'granted') {
+      setNotificationPrefs({ enabled: true });
+      setPermissionDenied(false);
+    } else if (permission === 'denied') {
+      setPermissionDenied(true);
+    } else {
+      const result = await requestNotificationPermission();
+      if (result === 'granted') { setNotificationPrefs({ enabled: true }); setPermissionDenied(false); }
+      else setPermissionDenied(true);
+    }
+  }
 
   if (schedules.length === 0) {
     return (
@@ -152,6 +177,81 @@ export default function SupplementScheduleList({ onAdd, onEdit }: Props) {
           })}
         </div>
       ))}
+
+      {/* Notification Preferences */}
+      <div className="pt-2">
+        <button
+          onClick={handleToggleNotifications}
+          className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+            state.notificationPrefs.enabled
+              ? 'bg-teal-50 border-teal-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}
+        >
+          {state.notificationPrefs.enabled
+            ? <Bell size={16} className="text-teal-500" />
+            : <BellOff size={16} className="text-slate-400" />
+          }
+          <div className="text-left flex-1">
+            <p className="text-sm font-medium text-slate-700">
+              {state.notificationPrefs.enabled ? 'Reminders On' : 'Reminders Off'}
+            </p>
+            <p className="text-xs text-slate-400">
+              {state.notificationPrefs.enabled
+                ? 'You will receive alerts when supplements are due'
+                : 'Enable to get supplement reminders'
+              }
+            </p>
+          </div>
+          <div className={`w-10 h-6 rounded-full flex items-center transition-colors ${
+            state.notificationPrefs.enabled ? 'bg-teal-500 justify-end' : 'bg-slate-300 justify-start'
+          }`}>
+            <div className="w-5 h-5 bg-white rounded-full shadow-sm mx-0.5" />
+          </div>
+        </button>
+
+        {permissionDenied && (
+          <p className="text-xs text-amber-600 mt-2 px-1">
+            Notification permission was denied. Please enable notifications in your browser settings.
+          </p>
+        )}
+
+        {pushSupported && isAuthenticated && (
+          <button
+            onClick={() => isSubscribed ? pushUnsubscribe() : pushSubscribe()}
+            disabled={pushLoading}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors mt-2 ${
+              isSubscribed
+                ? 'bg-indigo-50 border-indigo-200'
+                : 'bg-slate-50 border-slate-200'
+            } ${pushLoading ? 'opacity-60' : ''}`}
+          >
+            <Smartphone size={16} className={isSubscribed ? 'text-indigo-500' : 'text-slate-400'} />
+            <div className="text-left flex-1">
+              <p className="text-sm font-medium text-slate-700">
+                {pushLoading ? 'Setting up...' : isSubscribed ? 'Push Notifications On' : 'Push Notifications Off'}
+              </p>
+              <p className="text-xs text-slate-400">
+                {isSubscribed
+                  ? 'Reminders arrive even when the app is closed'
+                  : 'Enable to get reminders when the app is closed'
+                }
+              </p>
+            </div>
+            <div className={`w-10 h-6 rounded-full flex items-center transition-colors ${
+              isSubscribed ? 'bg-indigo-500 justify-end' : 'bg-slate-300 justify-start'
+            }`}>
+              <div className="w-5 h-5 bg-white rounded-full shadow-sm mx-0.5" />
+            </div>
+          </button>
+        )}
+
+        {!isAuthenticated && (
+          <p className="text-xs text-slate-400 mt-2 px-1">
+            Sign in to receive push notifications when the app is closed.
+          </p>
+        )}
+      </div>
 
       <Button variant="outline" size="sm" className="w-full" onClick={onAdd} iconLeft={<Plus size={14} />}>
         Add Another Supplement

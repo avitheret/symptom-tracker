@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed, FlaskConical } from 'lucide-react';
+import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed, FlaskConical, Mic } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import TrackingModal from './TrackingModal';
@@ -10,14 +10,14 @@ import WeatherCard from './WeatherCard';
 import DailyExplainerCard from './DailyExplainerCard';
 import ReviewQueue from './ReviewQueue';
 import AIInsightsCard from './AIInsightsCard';
-import MedicationTab from './MedicationTab';
+import MedScheduleWidget from './MedScheduleWidget';
 import SupplementScheduleWidget from './SupplementScheduleWidget';
 import DashboardCustomizer from './DashboardCustomizer';
 import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState } from './ui';
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.4.0';
+const APP_VERSION = 'v3.6.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -102,6 +102,7 @@ interface Props {
   onOpenMedSchedule?: () => void;
   onEditMedSchedule?: (schedule: import('../types').MedicationSchedule) => void;
   onOpenSupplementSchedule?: () => void;
+  onVoicePress?: () => void;
 }
 
 function RecentMealsWidget({ logs, onSeeAll, onEditMeal }: {
@@ -256,8 +257,8 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
   );
 }
 
-export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onEditMeal, onOpenMedSchedule, onEditMedSchedule, onOpenSupplementSchedule }: Props) {
-  const { state, setView, selectCondition, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient } = useApp();
+export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onEditMeal, onOpenMedSchedule, onOpenSupplementSchedule, onVoicePress }: Props) {
+  const { state, setView, selectCondition, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient, loadSmallDemoData, removeDemoData } = useApp();
   const { user } = useAuth();
   const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
   const [showAddCondition,     setShowAddCondition]     = useState(false);
@@ -281,6 +282,12 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
   );
   const todayCheckIn   = getTodayCheckIn();
   const hasPendingVoiceReviews = patientEntries.some(e => e.reviewStatus === 'to_review');
+  const hasDemoData = useMemo(() => (
+    state.entries.some(e => e.id.startsWith('demo-')) ||
+    state.checkIns.some(e => e.id.startsWith('demo-')) ||
+    state.medicationLogs.some(e => e.id.startsWith('demo-')) ||
+    (state.supplementLogs ?? []).some(e => e.id.startsWith('demo-'))
+  ), [state.entries, state.checkIns, state.medicationLogs, state.supplementLogs]);
 
   const totalEntries = approvedEntries.length;
   const thisWeek = (() => {
@@ -340,6 +347,21 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
         </button>
       </div>
 
+      {/* ── Voice hero ───────────────────────────────────── */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl px-5 py-4 flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-800">Speak a command</p>
+          <p className="text-xs text-slate-500 mt-0.5">Say 'Hey Tracker' to log hands-free</p>
+        </div>
+        <button
+          onClick={() => onVoicePress?.()}
+          aria-label="Activate voice command"
+          className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform"
+        >
+          <Mic size={24} />
+        </button>
+      </div>
+
       {/* ── Quick-action buttons ──────────────────────────── */}
       <div className="grid grid-cols-4 gap-2">
         {[
@@ -360,6 +382,23 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
           </button>
         ))}
       </div>
+
+      {/* ── Vitals bento row ─────────────────────────────── */}
+      {todayCheckIn && (
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'Health', value: todayCheckIn.healthScore, color: 'text-rose-600', bg: 'bg-rose-50' },
+            { label: 'Energy', value: todayCheckIn.energy, color: 'text-amber-600', bg: 'bg-amber-50' },
+            { label: 'Mood', value: todayCheckIn.mood, color: 'text-violet-600', bg: 'bg-violet-50' },
+            { label: 'Sleep', value: `${todayCheckIn.sleepHours}h`, color: 'text-blue-600', bg: 'bg-blue-50' },
+          ].map(({ label, value, color, bg }) => (
+            <div key={label} className={`${bg} rounded-2xl py-3 px-2 text-center`}>
+              <p className={`text-lg font-bold ${color}`}>{value}</p>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Stats widget ──────────────────────────────────── */}
       {show('stats') && (
@@ -522,12 +561,9 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
       {/* ── AI Insights widget ─────────────────────────────── */}
       {show('aiInsights') && <AIInsightsCard />}
 
-      {/* ── Meds tab ─────────────────────────────────────── */}
+      {/* ── Meds schedule widget ────────────────────────── */}
       {show('medSchedule') && (
-        <MedicationTab
-          onOpenMedSchedule={onOpenMedSchedule}
-          onEditMedSchedule={onEditMedSchedule}
-        />
+        <MedScheduleWidget onAddSchedule={onOpenMedSchedule ?? (() => {})} />
       )}
 
       {/* ── Supplements widget ─────────────────────────────── */}
@@ -582,6 +618,26 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
           ))}
         </div>
       )}
+
+      {/* ── Demo data ────────────────────────────────────── */}
+      <div className="flex items-center justify-center gap-3 pt-2 pb-1">
+        {!hasDemoData && (
+          <button
+            onClick={loadSmallDemoData}
+            className="text-xs font-medium text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors"
+          >
+            Load demo data
+          </button>
+        )}
+        {hasDemoData && (
+          <button
+            onClick={removeDemoData}
+            className="text-xs font-medium text-slate-400 hover:text-red-500 underline underline-offset-2 transition-colors"
+          >
+            Remove demo data
+          </button>
+        )}
+      </div>
 
       {/* ── Modals ────────────────────────────────────────── */}
       {trackingCondition && (

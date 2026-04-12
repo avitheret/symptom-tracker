@@ -1,20 +1,59 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  Activity, LayoutDashboard, List, BarChart2, Brain, Notebook,
-  LogIn, ChevronDown, Users, Plus, Shield, FlaskConical,
+  Activity, LayoutDashboard, UtensilsCrossed, BarChart2,
+  LogIn, ChevronDown, Users, Plus, Shield,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import type { View } from '../types';
 
-const NAV: { view: View; label: string; Icon: React.FC<{ size?: number; className?: string }> }[] = [
-  { view: 'dashboard',  label: 'Dashboard',  Icon: LayoutDashboard },
-  { view: 'conditions', label: 'Conditions', Icon: List },
-  { view: 'supplements', label: 'Supplements', Icon: FlaskConical },
-  { view: 'reports',    label: 'Reports',    Icon: BarChart2 },
-  { view: 'insights',   label: 'Insights',   Icon: Brain },
-  { view: 'notes',      label: 'Notes',      Icon: Notebook },
-  { view: 'patients',   label: 'Patients',   Icon: Users },
+type NavGroup = {
+  id: string;
+  label: string;
+  defaultView: View;
+  Icon: React.FC<{ size?: number; className?: string }>;
+  group: Set<View>;
+  children?: { view: View; label: string }[];
+};
+
+const NAV: NavGroup[] = [
+  {
+    id: 'home',
+    label: 'Home',
+    defaultView: 'dashboard',
+    Icon: LayoutDashboard,
+    group: new Set<View>(['dashboard', 'conditions', 'notes', 'supplements', 'meds']),
+    children: [
+      { view: 'conditions',  label: 'Conditions'  },
+      { view: 'notes',       label: 'Notes'       },
+      { view: 'supplements', label: 'Supplements' },
+      { view: 'meds',        label: 'Meds'        },
+    ],
+  },
+  {
+    id: 'meals',
+    label: 'Meals',
+    defaultView: 'meals',
+    Icon: UtensilsCrossed,
+    group: new Set<View>(['meals']),
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    defaultView: 'reports',
+    Icon: BarChart2,
+    group: new Set<View>(['reports', 'insights']),
+    children: [
+      { view: 'insights', label: 'Insights' },
+    ],
+  },
+  {
+    id: 'patients',
+    label: 'Patients',
+    defaultView: 'patients',
+    Icon: Users,
+    group: new Set<View>(['patients']),
+  },
 ];
 
 interface Props {
@@ -28,7 +67,9 @@ export default function Header({ onOpenAuth, onOpenProfile, onOpenAddPatient }: 
   const { user, isAuthenticated } = useAuth();
 
   const [showPatientMenu, setShowPatientMenu] = useState(false);
+  const [openDropdown, setOpenDropdown]       = useState<string | null>(null);
   const patientMenuRef = useRef<HTMLDivElement>(null);
+  const navRef         = useRef<HTMLDivElement>(null);
 
   const activePatient = getActivePatient();
 
@@ -36,11 +77,14 @@ export default function Header({ onOpenAuth, onOpenProfile, onOpenAddPatient }: 
     ? user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
     : '';
 
-  // Close patient menu on click outside
+  // Close menus on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (patientMenuRef.current && !patientMenuRef.current.contains(e.target as Node)) {
         setShowPatientMenu(false);
+      }
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
       }
     }
     document.addEventListener('mousedown', handleClick);
@@ -57,21 +101,49 @@ export default function Header({ onOpenAuth, onOpenProfile, onOpenAddPatient }: 
           <span className="hidden sm:inline">SymptomTrack</span>
         </div>
 
-        {/* Desktop nav — hidden on mobile (BottomNav handles mobile) */}
-        <nav className="hidden lg:flex gap-1">
-          {NAV.map(({ view, label, Icon }) => (
-            <button
-              key={view}
-              onClick={() => setView(view)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-                ${state.view === view
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
-            >
-              <Icon size={15} />
-              {label}
-            </button>
-          ))}
+        {/* Desktop nav — hidden on mobile (BottomNav + SubNav handle mobile) */}
+        <nav className="hidden lg:flex gap-0.5" ref={navRef}>
+          {NAV.map(({ id, label, defaultView, Icon, group, children }) => {
+            const active = group.has(state.view);
+            const isOpen = openDropdown === id;
+            return (
+              <div key={id} className="relative">
+                <button
+                  onClick={() => {
+                    setView(defaultView);
+                    setOpenDropdown(isOpen ? null : (children ? id : null));
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+                    ${active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                >
+                  <Icon size={15} />
+                  {label}
+                  {children && (
+                    <ChevronDown size={12} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  )}
+                </button>
+                {children && isOpen && (
+                  <div className="absolute left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden min-w-[140px] z-50">
+                    <div className="py-1">
+                      {children.map(({ view, label: childLabel }) => (
+                        <button
+                          key={view}
+                          onClick={() => { setView(view); setOpenDropdown(null); }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors min-h-[40px] ${
+                            state.view === view
+                              ? 'bg-blue-50 text-blue-700 font-semibold'
+                              : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {childLabel}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         {/* Right side: patient switcher + auth */}

@@ -155,7 +155,7 @@ export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday',
 
 export const ONBOARDING_CONDITION_LIMIT = 1;
 
-export type View = 'dashboard' | 'conditions' | 'meals' | 'supplements' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin';
+export type View = 'dashboard' | 'conditions' | 'meals' | 'supplements' | 'meds' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin';
 
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
@@ -395,6 +395,7 @@ export interface SupplementSchedule {
   frequency: SupplementFrequency;
   reminderTime?: string;      // "08:00" (HH:MM) — optional reminder time
   status: 'active' | 'paused';
+  notificationsEnabled?: boolean;
   notes?: string;
   timeWindow?: SupplementTimeWindow;
   quantity?: string;

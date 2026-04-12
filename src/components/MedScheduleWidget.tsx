@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { Check, AlertTriangle, Plus } from 'lucide-react';
+import { Check, Clock, X, Plus } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { formatTime12 } from '../utils/notifications';
+import { normSupp } from '../utils/supplementMatcher';
 import { SectionHeader, Card, Badge } from './ui';
 
 type DoseStatus = 'upcoming' | 'due' | 'overdue' | 'taken';
@@ -44,9 +45,10 @@ export default function MedScheduleWidget({ onAddSchedule }: Props) {
         const [dh, dm] = doseTime.split(':').map(Number);
         const doseMins = dh * 60 + dm;
 
-        // Check if taken (match by name + today's date + approximate time)
+        // Check if taken: name (normalized) + date only — no exact time check,
+        // since voice logs record wall-clock time rather than scheduled dose time.
         const taken = todayLogs.some(
-          l => l.name.toLowerCase() === schedule.name.toLowerCase() && l.time === doseTime
+          l => normSupp(l.name) === normSupp(schedule.name)
         );
 
         let status: DoseStatus;
@@ -118,90 +120,100 @@ export default function MedScheduleWidget({ onAddSchedule }: Props) {
   }
 
   const allTaken = doses.length > 0 && doses.every(d => d.status === 'taken');
+  const remaining = doses.filter(d => d.status !== 'taken').length;
 
   return (
     <div>
-      <SectionHeader title="Meds Schedule" />
-      <Card padding>
+      <SectionHeader
+        title="Meds Schedule"
+        action={{ label: '+ Add', onClick: onAddSchedule }}
+      />
+      <Card padding={false}>
+        {/* Status summary header */}
         {allTaken ? (
-          <div className="flex items-center justify-center gap-2 py-4">
-            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-              <Check size={16} className="text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-emerald-700">All doses taken today!</p>
-              <p className="text-xs text-slate-400">{doses.length} medication{doses.length !== 1 ? 's' : ''} completed</p>
-            </div>
+          <div className="flex items-center justify-center gap-2 px-4 pt-3 pb-2">
+            <Check size={14} className="text-emerald-600" />
+            <span className="text-xs font-semibold text-emerald-600">All doses complete ✓</span>
           </div>
         ) : (
-          <div className="space-y-2">
-            {doses.map((dose, i) => (
-              <div
-                key={`${dose.scheduleId}-${dose.doseTime}-${i}`}
-                className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors ${
-                  dose.status === 'due'
-                    ? 'bg-teal-50 border border-teal-200'
-                    : dose.status === 'overdue'
-                    ? 'bg-amber-50 border border-amber-200'
-                    : dose.status === 'taken'
-                    ? 'bg-slate-50 border border-slate-100'
-                    : 'bg-white border border-slate-100'
-                }`}
-              >
-                {/* Time */}
-                <div className={`text-xs font-bold w-16 flex-shrink-0 ${
-                  dose.status === 'due' ? 'text-teal-700' :
-                  dose.status === 'overdue' ? 'text-amber-700' :
-                  dose.status === 'taken' ? 'text-slate-400 line-through' :
-                  'text-slate-600'
-                }`}>
-                  {formatTime12(dose.doseTime)}
-                </div>
+          <p className="text-xs text-slate-500 px-4 pt-3 pb-1">
+            {remaining} of {doses.length} dose{doses.length !== 1 ? 's' : ''} remaining
+          </p>
+        )}
 
-                {/* Med info */}
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${
-                    dose.status === 'taken' ? 'text-slate-400 line-through' : 'text-slate-800'
-                  }`}>
-                    {dose.name}
-                    {dose.dosage && <span className="font-normal text-slate-500"> {dose.dosage}</span>}
-                  </p>
-                </div>
-
-                {/* Status / Action */}
+        {/* Timeline rows */}
+        <div className="px-4 pb-3">
+          {doses.map((dose, i) => (
+            <div
+              key={`${dose.scheduleId}-${dose.doseTime}-${i}`}
+              className={`flex items-center gap-3 py-3 ${i < doses.length - 1 ? 'border-b border-slate-50' : ''}`}
+            >
+              {/* Status circle */}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                dose.status === 'taken'
+                  ? 'bg-emerald-100'
+                  : dose.status === 'due'
+                  ? 'bg-teal-500 animate-pulse'
+                  : dose.status === 'overdue'
+                  ? 'bg-red-100'
+                  : 'bg-slate-100'
+              }`}>
                 {dose.status === 'taken' ? (
-                  <Badge variant="success">
-                    <Check size={10} className="inline mr-0.5" />Done
-                  </Badge>
-                ) : dose.status === 'overdue' ? (
-                  <div className="flex items-center gap-1.5">
-                    <AlertTriangle size={12} className="text-amber-500" />
-                    <button
-                      onClick={() => markAsTaken(dose)}
-                      className="px-2.5 py-1 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 transition-colors"
-                    >
-                      Take
-                    </button>
-                  </div>
+                  <Check size={16} className="text-emerald-600" />
                 ) : dose.status === 'due' ? (
-                  <button
-                    onClick={() => markAsTaken(dose)}
-                    className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold hover:bg-teal-700 transition-colors animate-pulse"
-                  >
-                    Take Now
-                  </button>
+                  <Clock size={16} className="text-white" />
+                ) : dose.status === 'overdue' ? (
+                  <X size={16} className="text-red-500" />
                 ) : (
-                  <button
-                    onClick={() => markAsTaken(dose)}
-                    className="px-2.5 py-1 border border-slate-200 text-slate-500 rounded-lg text-xs font-medium hover:bg-slate-50 transition-colors"
-                  >
-                    Mark Taken
-                  </button>
+                  <Clock size={16} className="text-slate-400" />
                 )}
               </div>
-            ))}
-          </div>
-        )}
+
+              {/* Center content */}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-slate-400">
+                  {formatTime12(dose.doseTime)}
+                </p>
+                <p className={`text-sm font-semibold truncate ${
+                  dose.status === 'taken' ? 'line-through text-slate-400' : 'text-slate-900'
+                }`}>
+                  {dose.name}
+                  {dose.dosage && (
+                    <span className="font-normal"> {dose.dosage}</span>
+                  )}
+                </p>
+              </div>
+
+              {/* Action button */}
+              {dose.status === 'taken' ? (
+                <Badge variant="success">
+                  <Check size={10} className="inline mr-0.5" />Done
+                </Badge>
+              ) : dose.status === 'due' ? (
+                <button
+                  onClick={() => markAsTaken(dose)}
+                  className="px-4 py-2 bg-teal-600 text-white text-xs font-bold rounded-xl min-h-[36px] hover:bg-teal-700 active:scale-95 transition-all"
+                >
+                  Take Now
+                </button>
+              ) : dose.status === 'overdue' ? (
+                <button
+                  onClick={() => markAsTaken(dose)}
+                  className="px-3 py-2 bg-red-500 text-white text-xs font-semibold rounded-xl min-h-[36px] hover:bg-red-600 active:scale-95 transition-all"
+                >
+                  Log Now
+                </button>
+              ) : (
+                <button
+                  onClick={() => markAsTaken(dose)}
+                  className="px-3 py-2 border border-slate-200 text-slate-500 text-xs font-medium rounded-xl min-h-[36px] hover:bg-slate-50 active:scale-95 transition-all"
+                >
+                  Mark Taken
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       </Card>
     </div>
   );

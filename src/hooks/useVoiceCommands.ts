@@ -22,6 +22,7 @@ export type VoiceCommand =
   | 'LOG_MEAL'
   | 'LOG_SUPPLEMENT'
   | 'MARK_SUPPLEMENT_TAKEN'
+  | 'MARK_MEDICATION_TAKEN'
   | 'OPEN_REPORTS'
   | 'OPEN_INSIGHTS'
   | 'OPEN_HOME'
@@ -146,7 +147,12 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
   {
     patterns: ['mark taken', 'mark as taken', 'i took', 'just took', 'mark supplement taken', 'taken my'],
     command: 'MARK_SUPPLEMENT_TAKEN',
-    label: 'Mark Taken',
+    label: 'Mark Supplement Taken',
+  },
+  {
+    patterns: ['mark medication taken', 'mark med taken', 'add medication taken', 'add med taken', 'medication taken', 'add taken'],
+    command: 'MARK_MEDICATION_TAKEN',
+    label: 'Mark Medication Taken',
   },
   {
     patterns: ['log supplement', 'log supplements', 'add supplement', 'add supplements', 'log vitamin', 'add vitamin', 'log mineral', 'add mineral', 'log probiotic', 'log probiotics', 'add probiotic', 'add probiotics', 'log omega', 'add omega', 'log magnesium', 'add magnesium', 'log zinc', 'add zinc', 'log vitamin d', 'log vitamin c', 'supplement', 'took my vitamins', 'took my vitamin', 'took my supplement', 'took my supplements', 'took supplements', 'took my', 'took a', 'log my pills', 'add my pills', 'morning supplements', 'breakfast supplements', 'lunch supplements', 'dinner supplements', 'bedtime supplements'],
@@ -399,6 +405,37 @@ function extractSupplementTakenPrefill(
   return { name: toTitleCase(raw) };
 }
 
+/**
+ * Extract medication name from "[verb] [name] taken" voice commands.
+ * e.g. "mark thyroxine taken" → { name: "Thyroxine" }
+ *      "add thyroxine taken"  → { name: "Thyroxine" }
+ *      "add taken thyroxine"  → { name: "Thyroxine" }
+ */
+function extractMedicationTakenPrefill(text: string): SupplementTakenPrefill | null {
+  const t = text.trim().toLowerCase();
+  if (!t) return null;
+
+  // Pattern 1: "[mark|add|log] [my] <name> taken" — name before "taken"
+  const m1 = t.match(/(?:mark|add|log)\s+(?:my\s+)?(.+?)\s+(?:as\s+)?taken\b/i);
+  if (m1) {
+    const raw = m1[1]
+      .replace(/\b(medication|medicine|med|pill|tablet|capsule)s?\b/gi, '')
+      .trim();
+    if (raw) return { name: toTitleCase(raw) };
+  }
+
+  // Pattern 2: "[mark|add] taken [my] <name>" — name after "taken" (same word order as supplement)
+  const m2 = t.match(/(?:mark|add)\s+(?:as\s+)?taken\s+(?:my\s+)?(.+)/i);
+  if (m2) {
+    const raw = m2[1]
+      .replace(/\b(medication|medicine|med|pill|tablet|capsule)s?\b/gi, '')
+      .trim();
+    if (raw) return { name: toTitleCase(raw) };
+  }
+
+  return null;
+}
+
 /** Fuzzy-match spoken text against supplement database names. */
 function fuzzyMatchSupplement(
   spoken: string,
@@ -605,6 +642,8 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
                 : undefined;
               const wakeSupTakenPrefill = afterWakeCmd.command === 'MARK_SUPPLEMENT_TAKEN'
                 ? extractSupplementTakenPrefill(afterWake, supplementDbRef.current) ?? undefined
+                : afterWakeCmd.command === 'MARK_MEDICATION_TAKEN'
+                ? extractMedicationTakenPrefill(afterWake) ?? undefined
                 : undefined;
               const wakeSupLabel = wakeSupPrefill?.name ? `Log ${wakeSupPrefill.name}` : wakeSupPrefill?.timeWindow ? `Log ${wakeSupPrefill.timeWindow} supplements` : afterWakeCmd.label;
               const wakeLabel = wakeSupTakenPrefill?.name ? `Marked ${wakeSupTakenPrefill.name} taken` : wakeSupPrefill ? wakeSupLabel : afterWakeCmd.label;
@@ -690,6 +729,12 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
             const takenPrefill = extractSupplementTakenPrefill(newText, supplementDbRef.current) ?? undefined;
             const label = takenPrefill?.name ? `Marked ${takenPrefill.name} taken` : match.label;
             confirmCommand(match.command, label, undefined, undefined, undefined, takenPrefill);
+          } else if (match.command === 'MARK_MEDICATION_TAKEN') {
+            // Wait for final so user can finish saying the medication name
+            if (!hasFinal) return;
+            const medTakenPrefill = extractMedicationTakenPrefill(newText) ?? undefined;
+            const label = medTakenPrefill?.name ? `Marked ${medTakenPrefill.name} taken` : match.label;
+            confirmCommand(match.command, label, undefined, undefined, undefined, medTakenPrefill);
           } else {
             confirmCommand(match.command, match.label);
           }
@@ -701,6 +746,14 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
           if (prefill) {
             const label = `Log ${toTitleCase(prefill.symptomName)} → ${toTitleCase(prefill.conditionHint)}`;
             confirmCommand('LOG_SYMPTOM', label, prefill);
+          } else {
+            // Check for "[verb] [name] taken" — catches "mark thyroxine taken" word order
+            // which doesn't match any pattern because "mark" and "taken" aren't adjacent.
+            const medTakenPrefill = extractMedicationTakenPrefill(newText);
+            if (medTakenPrefill) {
+              const label = `Marked ${medTakenPrefill.name} taken`;
+              confirmCommand('MARK_MEDICATION_TAKEN', label, undefined, undefined, undefined, medTakenPrefill);
+            }
           }
         }
       }

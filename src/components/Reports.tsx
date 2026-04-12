@@ -16,7 +16,7 @@ import TrackingModal from './TrackingModal';
 import SwipeableRow from './SwipeableRow';
 import { Button, Card, Chip, TabBar, SectionHeader, EmptyState, Badge } from './ui';
 import type { TabItem } from './ui';
-import type { TrackingEntry, FoodLog } from '../types';
+import type { TrackingEntry, FoodLog, MedicationLog, SupplementLog } from '../types';
 import { MEAL_TYPES } from '../types';
 
 type Range     = '7d' | '30d' | '90d' | 'all';
@@ -67,7 +67,7 @@ function csvExport(entries: TrackingEntry[]) {
 }
 
 export default function Reports() {
-  const { state, deleteEntry, deleteFoodLog, getPatientConditions, getActivePatient } = useApp();
+  const { state, deleteEntry, deleteFoodLog, deleteMedicationLog, deleteSupplementLog, getPatientConditions, getActivePatient } = useApp();
 
   const [range,             setRange]             = useState<Range>('30d');
   const [chartType,         setChartType]         = useState<ChartType>('line');
@@ -122,6 +122,22 @@ export default function Reports() {
       .filter(l => !cutoff || l.date >= cutoff)
       .sort((a, b) => b.createdAt - a.createdAt);
   }, [state.foodLogs, state.activePatientId, cutoff]);
+
+  // ── Medication logs filtered by date range ────────────────────
+  const filteredMedLogs = useMemo((): MedicationLog[] =>
+    (state.medicationLogs ?? [])
+      .filter(l => l.patientId === state.activePatientId)
+      .filter(l => !cutoff || l.date >= cutoff)
+      .sort((a, b) => b.createdAt - a.createdAt),
+  [state.medicationLogs, state.activePatientId, cutoff]);
+
+  // ── Supplement logs filtered by date range ────────────────────
+  const filteredSuppLogs = useMemo((): SupplementLog[] =>
+    (state.supplementLogs ?? [])
+      .filter(l => l.patientId === state.activePatientId)
+      .filter(l => !cutoff || l.date >= cutoff)
+      .sort((a, b) => b.createdAt - a.createdAt),
+  [state.supplementLogs, state.activePatientId, cutoff]);
 
   // Count of pending-review entries (for filter chip badge)
   const pendingReviewCount = patientEntries.filter(e => e.reviewStatus === 'to_review').length;
@@ -406,12 +422,16 @@ export default function Reports() {
       {/* ── Log tab ───────────────────────────────────────── */}
       {tab === 'log' && (() => {
         type LogItem =
-          | { kind: 'symptom'; data: TrackingEntry; ts: number }
-          | { kind: 'meal';    data: FoodLog;        ts: number };
+          | { kind: 'symptom';    data: TrackingEntry;  ts: number }
+          | { kind: 'meal';       data: FoodLog;         ts: number }
+          | { kind: 'medication'; data: MedicationLog;   ts: number }
+          | { kind: 'supplement'; data: SupplementLog;   ts: number };
 
         const combined: LogItem[] = [
-          ...filtered.map(e  => ({ kind: 'symptom' as const, data: e,  ts: e.createdAt  })),
-          ...filteredMeals.map(l => ({ kind: 'meal'    as const, data: l,  ts: l.createdAt  })),
+          ...filtered.map(e => ({ kind: 'symptom' as const,    data: e, ts: e.createdAt })),
+          ...filteredMeals.map(l    => ({ kind: 'meal'       as const, data: l, ts: l.createdAt })),
+          ...filteredMedLogs.map(l  => ({ kind: 'medication' as const, data: l, ts: l.createdAt })),
+          ...filteredSuppLogs.map(l => ({ kind: 'supplement' as const, data: l, ts: l.createdAt })),
         ].sort((a, b) => b.ts - a.ts);
 
         return (
@@ -448,6 +468,49 @@ export default function Reports() {
                               {log.notes && (
                                 <p className="text-xs text-slate-500 mt-1 italic">{log.notes}</p>
                               )}
+                            </div>
+                          </div>
+                        </SwipeableRow>
+                      );
+                    }
+                    if (item.kind === 'medication') {
+                      const log = item.data;
+                      return (
+                        <SwipeableRow key={`med-${log.id}`} onDelete={() => deleteMedicationLog(log.id)}>
+                          <div className="flex items-start gap-3 px-4 py-4 min-h-[60px]">
+                            <Pill size={15} className="text-emerald-500 flex-shrink-0 mt-1" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-semibold text-slate-900 truncate">{log.name}</span>
+                                {log.dosage && <span className="text-xs text-slate-500">{log.dosage}</span>}
+                                <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Med</span>
+                              </div>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {log.date} · {log.dayOfWeek} · {log.time}
+                              </p>
+                              {log.conditionName && (
+                                <p className="text-xs text-slate-500 mt-0.5">{log.conditionName}</p>
+                              )}
+                            </div>
+                          </div>
+                        </SwipeableRow>
+                      );
+                    }
+                    if (item.kind === 'supplement') {
+                      const log = item.data;
+                      return (
+                        <SwipeableRow key={`supp-${log.id}`} onDelete={() => deleteSupplementLog(log.id)}>
+                          <div className="flex items-start gap-3 px-4 py-4 min-h-[60px]">
+                            <FlaskConical size={15} className="text-teal-500 flex-shrink-0 mt-1" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-semibold text-slate-900 truncate">{log.name}</span>
+                                {log.dosage && <span className="text-xs text-slate-500">{log.dosage}</span>}
+                                <span className="text-xs font-medium text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded-full">Supplement</span>
+                              </div>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {log.date} · {log.dayOfWeek} · {log.time}
+                              </p>
                             </div>
                           </div>
                         </SwipeableRow>

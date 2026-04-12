@@ -12,7 +12,7 @@ import { CLOUD_ENABLED, supabase } from '../lib/supabase';
 import { computeDoseTimes } from '../utils/notifications';
 import { logActivity, ACTIONS } from '../utils/activityLogger';
 import { PREDEFINED_CONDITIONS } from '../data/medicalData';
-import { generateSampleData, generateSampleTriggerLogs, generateSampleCheckIns, generateSampleMedicationLogs, generateTodayDemoEntries, DEMO_INJECT_KEY } from '../data/sampleData';
+import { generateSampleData, generateSampleTriggerLogs, generateSampleCheckIns, generateSampleMedicationLogs, generateTodayDemoEntries, generateSmallDemoData, DEMO_INJECT_KEY } from '../data/sampleData';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -112,12 +112,39 @@ type Action =
   | { type: 'SET_NOTIFICATION_PREFS'; prefs: Partial<NotificationPreferences> }
   | { type: 'SELECT_CONDITION'; id: string | null }
   | { type: 'SET_VIEW'; view: View }
-  | { type: 'LOAD'; state: State };
+  | { type: 'LOAD'; state: State }
+  | { type: 'RESTORE_STATE'; payload: Partial<State> }
+  | { type: 'REMOVE_DEMO_DATA' };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'LOAD':
       return action.state;
+
+    case 'RESTORE_STATE':
+      return {
+        ...state,
+        ...action.payload,
+        // Keep volatile UI state from current session
+        view: state.view,
+        selectedConditionId: state.selectedConditionId,
+        // supplementDatabase is loaded from its own Supabase table — never overwrite it
+        supplementDatabase: state.supplementDatabase,
+      };
+
+    case 'REMOVE_DEMO_DATA': {
+      const isDemo = (id: string) => id.startsWith('demo-');
+      return {
+        ...state,
+        entries:             state.entries.filter(e => !isDemo(e.id)),
+        triggerLogs:         state.triggerLogs.filter(e => !isDemo(e.id)),
+        checkIns:            state.checkIns.filter(e => !isDemo(e.id)),
+        medicationLogs:      state.medicationLogs.filter(e => !isDemo(e.id)),
+        supplementLogs:      (state.supplementLogs ?? []).filter(e => !isDemo(e.id)),
+        medicationSchedules: state.medicationSchedules.filter(e => !isDemo(e.id)),
+        supplementSchedules: (state.supplementSchedules ?? []).filter(e => !isDemo(e.id)),
+      };
+    }
 
     case 'CREATE_PATIENT': {
       const isFirstPatient = state.patients.length === 0;
@@ -617,8 +644,11 @@ interface ContextValue {
   getPatientConditions: (patientId: string) => Condition[];
   loadSampleData: () => void;
   injectTodayDemoEntries: () => void;
+  loadSmallDemoData: () => void;
+  removeDemoData: () => void;
   syncWithCloud: () => Promise<void>;
   loadFromCloud: () => Promise<void>;
+  restoreFromCloud: (payload: Partial<State>) => void;
 }
 
 const AppContext = createContext<ContextValue | null>(null);
@@ -1093,6 +1123,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(DEMO_INJECT_KEY, today);
   }, [state.activePatientId]);
 
+  const loadSmallDemoData = useCallback(() => {
+    const patientId = state.activePatientId;
+    if (!patientId) return;
+    const demo = generateSmallDemoData(patientId);
+    dispatch({ type: 'BULK_ADD_ENTRIES',          entries:   demo.entries });
+    dispatch({ type: 'BULK_ADD_TRIGGER_LOGS',      logs:      demo.triggerLogs });
+    dispatch({ type: 'BULK_ADD_CHECKINS',          checkIns:  demo.checkIns });
+    dispatch({ type: 'BULK_ADD_MEDICATION_LOGS',   logs:      demo.medicationLogs });
+    dispatch({ type: 'BULK_ADD_SUPPLEMENT_LOGS',   logs:      demo.supplementLogs });
+  }, [state.activePatientId]);
+
+  const removeDemoData = useCallback(() => {
+    dispatch({ type: 'REMOVE_DEMO_DATA' });
+  }, []);
+
   const addSupplementLog = useCallback(
     (log: Omit<SupplementLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => {
       const patientId = state.activePatientId;
@@ -1175,6 +1220,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await new Promise(r => setTimeout(r, 800));
   }, []);
 
+  const restoreFromCloud = useCallback((payload: Partial<State>) => {
+    dispatch({ type: 'RESTORE_STATE', payload });
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -1227,8 +1276,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getPatientConditions,
         loadSampleData,
         injectTodayDemoEntries,
+        loadSmallDemoData,
+        removeDemoData,
         syncWithCloud,
         loadFromCloud,
+        restoreFromCloud,
       }}
     >
       {children}

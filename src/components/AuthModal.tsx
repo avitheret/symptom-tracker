@@ -9,9 +9,11 @@ type Mode = 'signin' | 'signup' | 'reset' | 'onboarding' | 'confirm-email';
 
 interface Props {
   onClose: () => void;
+  /** When true: hides the X button and backdrop-click dismissal (mandatory login). */
+  required?: boolean;
 }
 
-export default function AuthModal({ onClose }: Props) {
+export default function AuthModal({ onClose, required = false }: Props) {
   const { signIn, signUp, resetPassword, needsOnboarding, completeOnboarding } = useAuth();
   const { state, addConditionToPatient } = useApp();
 
@@ -96,7 +98,7 @@ export default function AuthModal({ onClose }: Props) {
   return (
     <div
       className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-      onClick={mode === 'onboarding' || mode === 'confirm-email' ? undefined : onClose}
+      onClick={required || mode === 'onboarding' || mode === 'confirm-email' ? undefined : onClose}
     >
       <div
         className={`bg-white rounded-2xl shadow-xl w-full ${mode === 'onboarding' ? 'max-w-lg' : 'max-w-sm'}`}
@@ -114,7 +116,7 @@ export default function AuthModal({ onClose }: Props) {
                 : 'Choose Your Condition'}
             </span>
           </div>
-          {mode !== 'onboarding' && mode !== 'confirm-email' && (
+          {!required && mode !== 'onboarding' && mode !== 'confirm-email' && (
             <button
               onClick={onClose}
               className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"

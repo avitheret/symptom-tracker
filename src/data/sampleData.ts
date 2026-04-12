@@ -1,4 +1,4 @@
-import type { DailyCheckIn, MedicationLog, TrackingEntry, TriggerLog } from '../types';
+import type { DailyCheckIn, MedicationLog, SupplementLog, TrackingEntry, TriggerLog } from '../types';
 import type { EffectivenessRating } from '../types';
 import { daysAgoStr } from '../utils/analytics';
 
@@ -379,3 +379,142 @@ export function generateTodayDemoEntries(patientId: string): TrackingEntry[] {
 }
 
 export const DEMO_INJECT_KEY = 'st-demo-last-inject';
+
+// ── Small demo dataset (≤5 entries per section) ───────────────────────────────
+// All IDs start with "demo-small-" for targeted removal.
+
+const DEMO_SUPPLEMENTS = [
+  { name: 'Vitamin D',  dosage: '2000 IU', form: 'Capsule' as const },
+  { name: 'Magnesium',  dosage: '400mg',   form: 'Capsule' as const },
+  { name: 'Omega-3',    dosage: '1000mg',  form: 'Capsule' as const },
+];
+
+const DEMO_MEDS_SMALL = [
+  { name: 'Ibuprofen',   type: 'medication' as const, dosage: '400mg',  conditionId: 'migraine', conditionName: 'Migraine' },
+  { name: 'Sumatriptan', type: 'medication' as const, dosage: '50mg',   conditionId: 'migraine', conditionName: 'Migraine' },
+  { name: 'Sertraline',  type: 'medication' as const, dosage: '50mg',   conditionId: 'anxiety',  conditionName: 'Anxiety'  },
+  { name: 'Paracetamol', type: 'medication' as const, dosage: '1g'                                                          },
+  { name: 'Deep breathing', type: 'treatment' as const,                 conditionId: 'anxiety',  conditionName: 'Anxiety'  },
+];
+
+const SMALL_ENTRIES: Array<{
+  conditionId: string; conditionName: string;
+  symptomId: string;   symptomName: string;
+  daysBack: number; hour: number; severity: number;
+}> = [
+  { conditionId: 'migraine', conditionName: 'Migraine', symptomId: 'migraine-s1', symptomName: 'Throbbing headache', daysBack: 0, hour: 18, severity: 7 },
+  { conditionId: 'migraine', conditionName: 'Migraine', symptomId: 'migraine-s2', symptomName: 'Nausea',             daysBack: 1, hour: 19, severity: 5 },
+  { conditionId: 'anxiety',  conditionName: 'Anxiety',  symptomId: 'anxiety-s1',  symptomName: 'Excessive worry',    daysBack: 2, hour:  8, severity: 6 },
+  { conditionId: 'anxiety',  conditionName: 'Anxiety',  symptomId: 'anxiety-s8',  symptomName: 'Sleep disturbance',  daysBack: 3, hour: 22, severity: 8 },
+  { conditionId: 'migraine', conditionName: 'Migraine', symptomId: 'migraine-s3', symptomName: 'Light sensitivity',  daysBack: 4, hour: 17, severity: 6 },
+];
+
+const SMALL_TRIGGERS = ['Stress', 'Poor sleep', 'Weather change', 'Caffeine', 'Food/Diet'];
+
+export interface SmallDemoData {
+  entries: TrackingEntry[];
+  triggerLogs: TriggerLog[];
+  checkIns: DailyCheckIn[];
+  medicationLogs: MedicationLog[];
+  supplementLogs: SupplementLog[];
+}
+
+export function generateSmallDemoData(patientId: string): SmallDemoData {
+  const ts = Date.now();
+  const uid = (tag: string, i: number) => `demo-small-${tag}-${i}-${ts}`;
+
+  // ── Symptom entries ────────────────────────────────────────────────────────
+  const entries: TrackingEntry[] = SMALL_ENTRIES.map((e, i) => {
+    const date = daysAgoStr(e.daysBack);
+    return {
+      id: uid('e', i),
+      patientId,
+      conditionId:   e.conditionId,
+      conditionName: e.conditionName,
+      symptomId:     e.symptomId,
+      symptomName:   e.symptomName,
+      date,
+      dayOfWeek: dayOfWeek(date),
+      time:      padTime(e.hour, rnd(0, 30)),
+      severity:  e.severity,
+      notes:     '',
+      createdAt: new Date(date).getTime() + e.hour * 3_600_000,
+    };
+  });
+
+  // ── Trigger logs ────────────────────────────────────────────────────────────
+  const triggerLogs: TriggerLog[] = SMALL_TRIGGERS.map((trigger, i) => {
+    const date = daysAgoStr(i);
+    return {
+      id: uid('tl', i),
+      patientId,
+      date,
+      dayOfWeek: dayOfWeek(date),
+      time: padTime(rnd(8, 20), rnd(0, 59)),
+      triggers: [trigger],
+      notes: '',
+      createdAt: new Date(date).getTime() + rnd(0, 43_200_000),
+    };
+  });
+
+  // ── Check-ins ───────────────────────────────────────────────────────────────
+  const checkIns: DailyCheckIn[] = Array.from({ length: 5 }, (_, i) => {
+    const date = daysAgoStr(i);
+    const stress = STRESS_LEVELS[rnd(0, 2)];
+    const sleepHours = 5 + rnd(0, 4);
+    return {
+      id: uid('ci', i),
+      patientId,
+      date,
+      dayOfWeek: dayOfWeek(date),
+      time: padTime(rnd(7, 9), rnd(0, 59)),
+      healthScore: stress === 'high' ? rnd(3, 6) : stress === 'medium' ? rnd(5, 8) : rnd(6, 9),
+      stress,
+      sleepHours,
+      energy: sleepHours >= 7 ? rnd(6, 9) : rnd(3, 6),
+      mood: MOODS[rnd(0, MOODS.length - 1)],
+      notes: '',
+      createdAt: new Date(date).getTime() + rnd(0, 36_000_000),
+    };
+  });
+
+  // ── Medication logs ─────────────────────────────────────────────────────────
+  const medicationLogs: MedicationLog[] = DEMO_MEDS_SMALL.map((med, i) => {
+    const date = daysAgoStr(i);
+    const effBias: EffectivenessRating[] = ['slight', 'moderate', 'moderate', 'major'];
+    return {
+      id: uid('ml', i),
+      patientId,
+      name: med.name,
+      type: med.type,
+      dosage: med.dosage,
+      date,
+      dayOfWeek: dayOfWeek(date),
+      time: padTime(rnd(7, 22), rnd(0, 59)),
+      conditionId: med.conditionId,
+      conditionName: med.conditionName,
+      effectiveness: effBias[rnd(0, effBias.length - 1)],
+      notes: '',
+      createdAt: new Date(date).getTime() + rnd(0, 86_400_000),
+    };
+  });
+
+  // ── Supplement logs ─────────────────────────────────────────────────────────
+  const supplementLogs: SupplementLog[] = DEMO_SUPPLEMENTS.map((supp, i) => {
+    const date = daysAgoStr(i);
+    return {
+      id: uid('sl', i),
+      patientId,
+      name: supp.name,
+      dosage: supp.dosage,
+      form: supp.form,
+      date,
+      dayOfWeek: dayOfWeek(date),
+      time: padTime(rnd(7, 9), rnd(0, 30)),
+      notes: '',
+      createdAt: new Date(date).getTime() + rnd(0, 43_200_000),
+    };
+  });
+
+  return { entries, triggerLogs, checkIns, medicationLogs, supplementLogs };
+}
