@@ -17,7 +17,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.8.0';
+const APP_VERSION = 'v3.8.1';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -146,14 +146,14 @@ function RecentMealsWidget({ logs, onSeeAll, onEditMeal }: {
   );
 }
 
-function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeAll, onClickMeal, onClickSymptomEntry }: {
+function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeAll, onClickMeal, onClickEntry }: {
   entries: import('../types').TrackingEntry[];
   conditions: import('../types').Condition[];
   foodLogs: FoodLog[];
   supplementLogs: SupplementLog[];
   onSeeAll: () => void;
   onClickMeal?: (log: FoodLog) => void;
-  onClickSymptomEntry?: () => void;
+  onClickEntry?: (entry: import('../types').TrackingEntry) => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(6);
 
@@ -204,10 +204,9 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
           }
           if (item.kind === 'supplement') {
             return (
-              <button
+              <div
                 key={item.data.id}
-                onClick={onClickSymptomEntry}
-                className={`w-full text-left flex items-center gap-3 px-4 py-3.5 min-h-[60px] hover:bg-slate-50 active:bg-slate-100 transition-colors ${!isLast ? 'border-b border-slate-50' : ''}`}
+                className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${!isLast ? 'border-b border-slate-50' : ''}`}
               >
                 <FlaskConical size={16} className="flex-shrink-0" style={{ color: '#8b5cf6' }} />
                 <div className="flex-1 min-w-0">
@@ -220,7 +219,7 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
                   </p>
                 </div>
                 <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: '#8b5cf6', backgroundColor: '#f5f3ff' }}>Supplement</span>
-              </button>
+              </div>
             );
           }
           const entry = item.data;
@@ -228,7 +227,7 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
           return (
             <button
               key={entry.id}
-              onClick={onClickSymptomEntry}
+              onClick={() => onClickEntry?.(entry)}
               className={`w-full text-left flex items-center gap-3 px-4 py-3.5 min-h-[60px] hover:bg-slate-50 active:bg-slate-100 transition-colors ${!isLast ? 'border-b border-slate-50' : ''}`}
             >
               <span
@@ -268,6 +267,7 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
   const { state, setView, selectCondition, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient, loadSmallDemoData, removeDemoData } = useApp();
   useAuth();
   const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
+  const [editingEntry,         setEditingEntry]         = useState<import('../types').TrackingEntry | null>(null);
   const [showAddCondition,     setShowAddCondition]     = useState(false);
   const [showCustomizer,       setShowCustomizer]       = useState(false);
   const [visibleWidgets,       setVisibleWidgets]       = useState<WidgetId[]>(loadPrefs);
@@ -695,7 +695,10 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
           supplementLogs={patientSupplements}
           onSeeAll={() => setView('reports')}
           onClickMeal={onEditMeal}
-          onClickSymptomEntry={() => setView('reports')}
+          onClickEntry={(entry) => {
+            const cond = conditions.find(c => c.id === entry.conditionId);
+            if (cond) { setTrackingCondition(cond); setEditingEntry(entry); }
+          }}
         />
       )}
 
@@ -779,7 +782,11 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
 
       {/* ── Modals ────────────────────────────────────────── */}
       {trackingCondition && (
-        <TrackingModal condition={trackingCondition} onClose={() => setTrackingCondition(null)} />
+        <TrackingModal
+          condition={trackingCondition}
+          existingEntry={editingEntry ?? undefined}
+          onClose={() => { setTrackingCondition(null); setEditingEntry(null); }}
+        />
       )}
       {showAddCondition && <AddConditionModal onClose={() => setShowAddCondition(false)} />}
       {showCustomizer && (
