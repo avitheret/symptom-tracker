@@ -17,7 +17,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.7.2';
+const APP_VERSION = 'v3.8.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -146,12 +146,14 @@ function RecentMealsWidget({ logs, onSeeAll, onEditMeal }: {
   );
 }
 
-function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeAll }: {
+function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeAll, onClickMeal, onClickSymptomEntry }: {
   entries: import('../types').TrackingEntry[];
   conditions: import('../types').Condition[];
   foodLogs: FoodLog[];
   supplementLogs: SupplementLog[];
   onSeeAll: () => void;
+  onClickMeal?: (log: FoodLog) => void;
+  onClickSymptomEntry?: () => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(6);
 
@@ -182,8 +184,10 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
           if (item.kind === 'meal') {
             const meal = MEAL_TYPES.find(m => m.id === item.data.mealType)!;
             return (
-              <div key={item.data.id}
-                className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${!isLast ? 'border-b border-slate-50' : ''}`}
+              <button
+                key={item.data.id}
+                onClick={() => onClickMeal?.(item.data)}
+                className={`w-full text-left flex items-center gap-3 px-4 py-3.5 min-h-[60px] hover:bg-slate-50 active:bg-slate-100 transition-colors ${!isLast ? 'border-b border-slate-50' : ''}`}
               >
                 <span className="text-base flex-shrink-0">{meal.emoji}</span>
                 <div className="flex-1 min-w-0">
@@ -195,13 +199,15 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
                   </p>
                 </div>
                 <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Meal</span>
-              </div>
+              </button>
             );
           }
           if (item.kind === 'supplement') {
             return (
-              <div key={item.data.id}
-                className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${!isLast ? 'border-b border-slate-50' : ''}`}
+              <button
+                key={item.data.id}
+                onClick={onClickSymptomEntry}
+                className={`w-full text-left flex items-center gap-3 px-4 py-3.5 min-h-[60px] hover:bg-slate-50 active:bg-slate-100 transition-colors ${!isLast ? 'border-b border-slate-50' : ''}`}
               >
                 <FlaskConical size={16} className="flex-shrink-0" style={{ color: '#8b5cf6' }} />
                 <div className="flex-1 min-w-0">
@@ -214,15 +220,16 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
                   </p>
                 </div>
                 <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ color: '#8b5cf6', backgroundColor: '#f5f3ff' }}>Supplement</span>
-              </div>
+              </button>
             );
           }
           const entry = item.data;
           const cond  = conditions.find(c => c.id === entry.conditionId);
           return (
-            <div
+            <button
               key={entry.id}
-              className={`flex items-center gap-3 px-4 py-3.5 min-h-[60px] ${!isLast ? 'border-b border-slate-50' : ''}`}
+              onClick={onClickSymptomEntry}
+              className={`w-full text-left flex items-center gap-3 px-4 py-3.5 min-h-[60px] hover:bg-slate-50 active:bg-slate-100 transition-colors ${!isLast ? 'border-b border-slate-50' : ''}`}
             >
               <span
                 className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -240,7 +247,7 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
                 </p>
               </div>
               <SeverityBadge severity={entry.severity} />
-            </div>
+            </button>
           );
         })}
         {hasMore && (
@@ -265,6 +272,7 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
   const [showCustomizer,       setShowCustomizer]       = useState(false);
   const [visibleWidgets,       setVisibleWidgets]       = useState<WidgetId[]>(loadPrefs);
   const [showAllConditions,    setShowAllConditions]    = useState(false);
+  const [selectedDate,         setSelectedDate]         = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   const activePatient  = getActivePatient();
   const conditions     = activePatient ? getPatientConditions(activePatient.id) : [];
@@ -348,57 +356,80 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
         {Array.from({ length: 7 }, (_, i) => {
           const d = new Date();
           d.setDate(d.getDate() - 3 + i);
-          const isToday = i === 3;
+          const dateStr = d.toISOString().slice(0, 10);
+          const isSelected = dateStr === selectedDate;
           const dayLabel = d.toLocaleDateString('en-GB', { weekday: 'short' });
           const dayNum = d.getDate();
           return (
-            <div
+            <button
               key={i}
-              className={`flex flex-col items-center gap-1 flex-shrink-0 w-11 py-2 rounded-2xl transition-colors ${
-                isToday
-                  ? 'bg-violet-500 text-white'
-                  : 'text-white/40'
+              onClick={() => setSelectedDate(dateStr)}
+              className={`flex flex-col items-center gap-1 flex-shrink-0 w-11 py-2 rounded-2xl transition-all active:scale-95 ${
+                isSelected ? 'bg-violet-500 text-white' : 'text-white/40 hover:bg-white/10'
               }`}
             >
               <span className="text-[11px] font-medium">{dayLabel}</span>
-              <span className={`text-sm font-bold ${isToday ? 'text-white' : 'text-white/60'}`}>{dayNum}</span>
-            </div>
+              <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-white/60'}`}>{dayNum}</span>
+            </button>
           );
         })}
       </div>
 
+      {/* "Viewing past date" banner */}
+      {selectedDate !== new Date().toISOString().slice(0, 10) && (
+        <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
+          <p className="text-white/70 text-xs font-medium">
+            Viewing {new Date(selectedDate + 'T12:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+          <button
+            onClick={() => setSelectedDate(new Date().toISOString().slice(0, 10))}
+            className="text-violet-400 text-xs font-semibold hover:text-violet-300"
+          >
+            Back to today
+          </button>
+        </div>
+      )}
+
       {/* Today's summary cards */}
       <div className="space-y-2.5">
         {/* Mood card */}
-        {todayCheckIn && (
-          <div className="bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-amber-400/20 flex items-center justify-center flex-shrink-0">
-              <span className="text-2xl">{
-                todayCheckIn.mood >= 8 ? '😊' :
-                todayCheckIn.mood >= 6 ? '🙂' :
-                todayCheckIn.mood >= 4 ? '😐' :
-                '😞'
-              }</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold text-sm">Mood</p>
-              <p className="text-white/50 text-xs mt-0.5 truncate">
-                {todayCheckIn.notes || `Energy ${todayCheckIn.energy}/10 · Sleep ${todayCheckIn.sleepHours}h`}
-              </p>
-            </div>
-            <span className={`text-lg font-bold flex-shrink-0 ${
-              todayCheckIn.mood >= 7 ? 'text-emerald-400' :
-              todayCheckIn.mood >= 5 ? 'text-amber-400' : 'text-rose-400'
-            }`}>
-              {todayCheckIn.mood}
-            </span>
-          </div>
-        )}
+        {(() => {
+          const selectedCheckIn = state.checkIns.find(
+            c => c.patientId === state.activePatientId && c.date === selectedDate
+          ) ?? null;
+          if (!selectedCheckIn) return null;
+          return (
+            <button
+              onClick={onOpenCheckIn}
+              className="w-full bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5 hover:bg-[#2e3560] active:scale-[0.98] transition-all text-left"
+            >
+              <div className="w-12 h-12 rounded-xl bg-amber-400/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">{
+                  selectedCheckIn.mood >= 8 ? '😊' :
+                  selectedCheckIn.mood >= 6 ? '🙂' :
+                  selectedCheckIn.mood >= 4 ? '😐' :
+                  '😞'
+                }</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold text-sm">Mood</p>
+                <p className="text-white/50 text-xs mt-0.5 truncate">
+                  {selectedCheckIn.notes || `Energy ${selectedCheckIn.energy}/10 · Sleep ${selectedCheckIn.sleepHours}h`}
+                </p>
+              </div>
+              <span className={`text-lg font-bold flex-shrink-0 ${
+                selectedCheckIn.mood >= 7 ? 'text-emerald-400' :
+                selectedCheckIn.mood >= 5 ? 'text-amber-400' : 'text-rose-400'
+              }`}>
+                {selectedCheckIn.mood}
+              </span>
+            </button>
+          );
+        })()}
 
         {/* Symptoms card */}
         {(() => {
-          const today2 = new Date().toISOString().slice(0, 10);
-          const todayEntries = patientEntries.filter(e => e.date === today2);
+          const todayEntries = patientEntries.filter(e => e.date === selectedDate);
           if (todayEntries.length === 0) return null;
           const topSymptoms = todayEntries
             .sort((a, b) => b.severity - a.severity)
@@ -407,7 +438,10 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
             .join(', ');
           const maxSev = Math.max(...todayEntries.map(e => e.severity));
           return (
-            <div className="bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5">
+            <button
+              onClick={() => setView('reports')}
+              className="w-full bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5 hover:bg-[#2e3560] active:scale-[0.98] transition-all text-left"
+            >
               <div className="w-12 h-12 rounded-xl bg-rose-400/20 flex items-center justify-center flex-shrink-0">
                 <ZapIcon size={22} className="text-rose-400" />
               </div>
@@ -421,20 +455,22 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
               }`}>
                 {maxSev}
               </span>
-            </div>
+            </button>
           );
         })()}
 
         {/* Triggers / Factors card */}
         {(() => {
-          const today3 = new Date().toISOString().slice(0, 10);
           const todayTriggers = state.triggerLogs.filter(
-            t => t.patientId === state.activePatientId && t.date === today3
+            t => t.patientId === state.activePatientId && t.date === selectedDate
           );
           if (todayTriggers.length === 0) return null;
           const allTriggerNames = todayTriggers.flatMap(t => t.triggers).slice(0, 5);
           return (
-            <div className="bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5">
+            <button
+              onClick={onOpenTrigger}
+              className="w-full bg-[#252b50] rounded-2xl px-4 py-3.5 flex items-center gap-3.5 hover:bg-[#2e3560] active:scale-[0.98] transition-all text-left"
+            >
               <div className="w-12 h-12 rounded-xl bg-violet-400/20 flex items-center justify-center flex-shrink-0">
                 <TrendingUp size={22} className="text-violet-400" />
               </div>
@@ -445,7 +481,7 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
               <span className="text-sm font-semibold text-white/40 flex-shrink-0">
                 {allTriggerNames.length} items
               </span>
-            </div>
+            </button>
           );
         })()}
       </div>
@@ -658,6 +694,8 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
           foodLogs={patientMeals}
           supplementLogs={patientSupplements}
           onSeeAll={() => setView('reports')}
+          onClickMeal={onEditMeal}
+          onClickSymptomEntry={() => setView('reports')}
         />
       )}
 
