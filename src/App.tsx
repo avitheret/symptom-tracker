@@ -152,10 +152,12 @@ function AppContent() {
 
     switch (command) {
       case 'LOG_SYMPTOM': {
-        if (prefill) {
-          // Try to resolve spoken names against the user's actual data
+        if (prefill?.symptomName) {
           const conditions = getPatientConditions(state.activePatientId ?? '');
-          const condition  = fuzzyMatch(conditions, prefill.conditionHint);
+          // Match condition: use hint if provided, else fall back to the sole condition
+          const condition = prefill.conditionHint
+            ? fuzzyMatch(conditions, prefill.conditionHint)
+            : conditions.length === 1 ? conditions[0] : null;
           if (condition) {
             const symptom = fuzzyMatch(condition.symptoms, prefill.symptomName);
             if (symptom) {
@@ -163,31 +165,38 @@ function AppContent() {
               const now = new Date();
               const severity = prefill.severity ?? 5;
               addEntry({
-                conditionId:   condition.id,
-                conditionName: condition.name,
-                symptomId:     symptom.id,
-                symptomName:   symptom.name,
-                date:          now.toISOString().slice(0, 10),
-                time:          `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+                conditionId:      condition.id,
+                conditionName:    condition.name,
+                symptomId:        symptom.id,
+                symptomName:      symptom.name,
+                date:             now.toISOString().slice(0, 10),
+                time:             `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
                 severity,
                 notes:            'Voice logged · pending review',
                 reviewStatus:     'to_review',
                 sourceType:       'voice',
                 sourceTranscript: label,
               });
-              // Show confirmation toast (reuse existing toast state)
               setToastLabel(`Logged ${symptom.name} \u2192 ${condition.name}. Pending review.`);
               setToastVisible(false);
               setTimeout(() => setToastVisible(true), 50);
               break;
             }
-            // Symptom not matched → fall back to TrackingModal with condition pre-selected
+            // Symptom name didn't match — open TrackingModal with condition pre-selected
             setVoiceTrackTarget({ condition, symptom: undefined, transcript: label });
             break;
           }
+          // Multiple conditions and no hint — open QuickLogSheet with symptom pre-noted
+          setVoiceTrackTarget(null);
+          disableWakeWord();
+          setQuickLogNoteRef(prefill.symptomName);
+          setShowQuickLog(true);
+          break;
         }
-        // Fallback: no prefill or condition not found — open QuickLogSheet
+        // No prefill at all — open QuickLogSheet
         setVoiceTrackTarget(null);
+        disableWakeWord();
+        setQuickLogNoteRef(undefined);
         setShowQuickLog(true);
         break;
       }

@@ -262,14 +262,34 @@ function extractInlineSymptom(textAfterWake: string): SymptomPrefill | null {
   const t = textAfterWake.trim();
   if (!t) return null;
   const m = t.match(INLINE_SYMPTOM_RE);
-  if (!m) return null;
-  const severityWord  = m[1]?.toLowerCase();
-  // Strip leading filler words that the regex may have captured
-  const symptomName   = m[2].replace(/^(?:a|an|the|symptom)\s+/i, '').trim();
-  const conditionHint = m[3].trim();
-  if (!symptomName || !conditionHint) return null;
-  const severity = severityWord ? SEVERITY_WORDS[severityWord] : undefined;
-  return { symptomName, conditionHint, severity };
+  if (m) {
+    const severityWord  = m[1]?.toLowerCase();
+    // Strip leading filler words that the regex may have captured
+    const symptomName   = m[2].replace(/^(?:a|an|the|symptom)\s+/i, '').trim();
+    const conditionHint = m[3].trim();
+    if (!symptomName || !conditionHint) return null;
+    const severity = severityWord ? SEVERITY_WORDS[severityWord] : undefined;
+    return { symptomName, conditionHint, severity };
+  }
+
+  // Fallback: "log [symptom] [severity] <name>" without a condition hint
+  const singleRe = new RegExp(
+    `(?:(?:log|add|record|new)\\s+)?(?:a\\s+)?(?:symptom\\s+)?` +
+    `(?:(${SEVERITY_PATTERN})\\s+)?([a-z][a-z\\s]{1,30})$`,
+    'i',
+  );
+  const sm = t.match(singleRe);
+  if (sm) {
+    const severityWord2 = sm[1]?.toLowerCase();
+    const symptomName2 = sm[2]
+      .replace(/^(?:a|an|the|symptom|some)\s+/i, '')
+      .trim();
+    if (symptomName2 && symptomName2.length >= 2 && !['symptom', 'log', 'add', 'record'].includes(symptomName2)) {
+      const severity2 = severityWord2 ? SEVERITY_WORDS[severityWord2] : undefined;
+      return { symptomName: symptomName2, conditionHint: '', severity: severity2 };
+    }
+  }
+  return null;
 }
 
 // ── Meal prefill extraction ───────────────────────────────────────────────────
@@ -671,7 +691,7 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
           try { recognition.abort(); } catch (_) { /* onend will restart */ }
         }
       } else if (stateRef.current === 'command-listening') {
-        setTranscript(partial);
+        setTranscript(newText);
         const match = matchCommand(partial);
 
         // ── Shared confirm helper ───────────────────────────────────────────
