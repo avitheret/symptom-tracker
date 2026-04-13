@@ -249,6 +249,12 @@ function matchCommand(transcript: string): CommandMatch | null {
   if (/\b(?:took|take|taken)\b/.test(t) && !/\b(?:my\s+)?supplements?\b/.test(t)) {
     return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
   }
+  // Broad "mark <anything>" fallback — handles STT dropping "taken" entirely.
+  // e.g. "mark testmed taken" → STT → "mark med TestMed" (no "taken" in output).
+  // Guard: exclude "check-in" phrases to avoid collision.
+  if (/\bmark\s+\S/.test(t) && !/check[-\s]?in/.test(t)) {
+    return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
+  }
 
   return null;
 }
@@ -454,6 +460,19 @@ function extractSupplementTakenPrefill(
     if (mE) raw = mE[1].trim();
   }
 
+  // Pattern F (fallback): bare "mark [filler] <name>" — STT dropped "taken" entirely.
+  // e.g. "mark testmed taken" → STT → "mark med TestMed" → extract "TestMed".
+  if (!raw) {
+    const mF = t.match(/\bmark\s+(.+)/i);
+    if (mF) {
+      raw = mF[1]
+        // Strip filler words that STT inserts (med, my, the, as, taken, etc.)
+        .replace(/\b(med|my|the|a|as|taken|take|medication|medicine|supplement|pill|capsule)s?\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+  }
+
   if (!raw) return null;
 
   // Strip trailing filler
@@ -506,6 +525,16 @@ function extractMedicationTakenPrefill(text: string): SupplementTakenPrefill | n
   const m3 = t.match(/\b(?:took|take|taken)\s+(?:my\s+)?(.+)/i);
   if (m3) {
     const raw = stripMedWords(m3[1]);
+    if (raw) return { name: toTitleCase(raw) };
+  }
+
+  // Pattern 4 (fallback): "mark [med|my] <name>" without "taken" — STT dropped it.
+  const m4 = t.match(/\bmark\s+(.+)/i);
+  if (m4) {
+    const raw = m4[1]
+      .replace(/\b(med|my|the|a|as|taken|take|medication|medicine|supplement|pill|capsule)s?\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     if (raw) return { name: toTitleCase(raw) };
   }
 
