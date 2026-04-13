@@ -93,6 +93,21 @@ export function fuzzyMatchSupplementName<T extends { name: string }>(
 
   if (spokenTokens.length === 0) return undefined;
 
+  // Pass 4.6: join each pair of adjacent spoken tokens and re-run passes 1-4 on the
+  // combined form. Handles STT splitting a drug name mid-word:
+  //   "test" + "med"  → "testmed"  → matches "TestMed"
+  //   "well" + "butrin" → "wellbutrin" → matches "Wellbutrin"
+  for (let i = 0; i < spokenTokens.length - 1; i++) {
+    const joined = spokenTokens[i] + spokenTokens[i + 1];
+    if (joined.length < 4) continue;
+    r = items.find(e => {
+      const cn = n(e.name).replace(/\s+/g, ''); // compact normalised name
+      return cn === joined || cn.startsWith(joined) || joined.startsWith(cn) ||
+             cn.includes(joined) || joined.includes(cn);
+    });
+    if (r) return r;
+  }
+
   // Pass 4.5: first spoken token (≥4 chars) is a prefix of the item name (no spaces)
   // AND covers ≥35% of it. Handles STT word-splitting of drug names:
   //   "well between" → "Wellbutrin"  ("well".length/10 = 40% ≥ 35%)

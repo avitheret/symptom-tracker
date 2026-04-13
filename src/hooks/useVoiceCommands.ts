@@ -460,14 +460,16 @@ function extractSupplementTakenPrefill(
     if (mE) raw = mE[1].trim();
   }
 
-  // Pattern F (fallback): bare "mark [filler] <name>" — STT dropped "taken" entirely.
-  // e.g. "mark testmed taken" → STT → "mark med TestMed" → extract "TestMed".
+  // Pattern F (fallback): bare "mark [my/the] <name>" — STT dropped "taken" entirely.
+  // e.g. "mark testmed taken" → STT → "mark med test med".
+  // Do NOT strip "med" here — it may be part of the drug name (e.g. "TestMed").
+  // Pass the full text to the fuzzy matcher (Pass 4.6 handles "test"+"med" → "testmed").
   if (!raw) {
     const mF = t.match(/\bmark\s+(.+)/i);
     if (mF) {
       raw = mF[1]
-        // Strip filler words that STT inserts (med, my, the, as, taken, etc.)
-        .replace(/\b(med|my|the|a|as|taken|take|medication|medicine|supplement|pill|capsule)s?\b/gi, '')
+        .replace(/\b(taken|take|as)\b/gi, '') // strip command words only
+        .replace(/^(my|the|a)\s+/i, '')        // strip leading articles
         .replace(/\s+/g, ' ')
         .trim();
     }
@@ -528,11 +530,13 @@ function extractMedicationTakenPrefill(text: string): SupplementTakenPrefill | n
     if (raw) return { name: toTitleCase(raw) };
   }
 
-  // Pattern 4 (fallback): "mark [med|my] <name>" without "taken" — STT dropped it.
+  // Pattern 4 (fallback): "mark [my/the] <name>" without "taken" — STT dropped it.
+  // Do NOT strip "med" — it may be part of the drug name (e.g. "TestMed").
   const m4 = t.match(/\bmark\s+(.+)/i);
   if (m4) {
     const raw = m4[1]
-      .replace(/\b(med|my|the|a|as|taken|take|medication|medicine|supplement|pill|capsule)s?\b/gi, '')
+      .replace(/\b(taken|take|as)\b/gi, '') // command words only
+      .replace(/^(my|the|a)\s+/i, '')        // leading articles only
       .replace(/\s+/g, ' ')
       .trim();
     if (raw) return { name: toTitleCase(raw) };
