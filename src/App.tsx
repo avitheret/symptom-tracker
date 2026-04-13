@@ -650,6 +650,14 @@ function AppContent() {
         voiceState={voiceState}
         transcript={voiceTranscript}
         onStop={manualActivate}
+        knownNames={[
+          ...(state.supplementSchedules ?? [])
+            .filter(s => s.patientId === state.activePatientId && s.status === 'active')
+            .map(s => s.name),
+          ...(state.medicationSchedules ?? [])
+            .filter(s => s.patientId === state.activePatientId && s.status === 'active')
+            .map(s => s.name),
+        ]}
       />
     </div>
   );

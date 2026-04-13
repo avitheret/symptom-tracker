@@ -1,11 +1,52 @@
 import { useMemo } from 'react';
 import { Mic } from 'lucide-react';
 import type { VoiceState } from '../hooks/useVoiceCommands';
+import { fuzzyMatchSupplementName } from '../utils/supplementMatcher';
 
 interface Props {
   voiceState: VoiceState;
   transcript: string;
   onStop: () => void;
+  /** Canonical names from the user's supplement + medication schedules.
+   *  Used to correct STT misrecognitions in the displayed transcript. */
+  knownNames?: string[];
+}
+
+// ─── Transcript correction ────────────────────────────────────────────────────
+// The STT API may split drug names into ordinary words, e.g. "Wellbutrin" →
+// "Well Between". This function slides a window over transcript tokens and
+// replaces any window that fuzzy-matches a known name with the canonical form.
+function correctTranscript(raw: string, knownNames: string[]): string {
+  if (!raw || knownNames.length === 0) return raw;
+
+  const items = knownNames.map(name => ({ name }));
+  const tokens = raw.trim().split(/\s+/);
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < tokens.length) {
+    let matched = false;
+    // Try windows longest→shortest so multi-word names win over subsets
+    for (let len = Math.min(4, tokens.length - i); len >= 1; len--) {
+      const window = tokens.slice(i, i + len).join(' ');
+      // Require the window to have enough substance to avoid false-positives
+      // (single short tokens are matched only if they're an exact/prefix match)
+      if (len === 1 && window.length < 4) break;
+      const match = fuzzyMatchSupplementName(window, items);
+      if (match) {
+        result.push(match.name);
+        i += len;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      result.push(tokens[i]);
+      i++;
+    }
+  }
+
+  return result.join(' ');
 }
 
 // ─── Simple entity extraction from spoken transcript ──────────────────────────
@@ -79,11 +120,17 @@ const WAVE_BARS = [
   'wave-22','wave-23','wave-24','wave-25','wave-26','wave-27','wave-28',
 ];
 
-export default function VoiceEntryOverlay({ voiceState, transcript, onStop }: Props) {
+export default function VoiceEntryOverlay({ voiceState, transcript, onStop, knownNames }: Props) {
   if (voiceState !== 'command-listening') return null;
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const entities = useMemo(() => extractEntities(transcript), [transcript]);
+  const displayTranscript = useMemo(
+    () => correctTranscript(transcript, knownNames ?? []),
+    [transcript, knownNames],
+  );
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const entities = useMemo(() => extractEntities(displayTranscript), [displayTranscript]);
 
   return (
     <div className="fixed inset-0 z-[100] bg-[#1a1f3c] flex flex-col">
@@ -97,9 +144,9 @@ export default function VoiceEntryOverlay({ voiceState, transcript, onStop }: Pr
         <div className="text-center space-y-3 max-w-sm w-full">
           <p className="text-white/40 text-xs font-medium uppercase tracking-widest">Transcript</p>
           <p className={`text-white font-bold leading-snug transition-all duration-200 ${
-            transcript ? 'text-3xl' : 'text-2xl opacity-40'
+            displayTranscript ? 'text-3xl' : 'text-2xl opacity-40'
           }`}>
-            {transcript || 'Listening…'}
+            {displayTranscript || 'Listening…'}
           </p>
         </div>
 
