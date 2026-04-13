@@ -145,12 +145,19 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     label: 'Log Medication',
   },
   {
-    patterns: ['mark taken', 'mark as taken', 'i took', 'just took', 'mark supplement taken', 'taken my'],
+    patterns: [
+      'mark taken', 'mark as taken', 'i took', 'just took',
+      'mark supplement taken', 'taken my', 'took my',
+      'i have taken', 'already took', 'have taken',
+    ],
     command: 'MARK_SUPPLEMENT_TAKEN',
     label: 'Mark Supplement Taken',
   },
   {
-    patterns: ['mark medication taken', 'mark med taken', 'add medication taken', 'add med taken', 'medication taken', 'add taken'],
+    patterns: [
+      'mark medication taken', 'mark med taken', 'add medication taken',
+      'add med taken', 'medication taken', 'add taken',
+    ],
     command: 'MARK_MEDICATION_TAKEN',
     label: 'Mark Medication Taken',
   },
@@ -227,6 +234,20 @@ function matchCommand(transcript: string): CommandMatch | null {
     if (patterns.some(p => t.includes(p))) {
       return { command, label };
     }
+  }
+
+  // ── Regex fallbacks for broad "mark taken" phrasing ──────────────────────
+  // These cover patterns where a drug/supplement name sits between key words,
+  // e.g. "mark Wellbutrin taken", "took Wellbutrin", "take my Wellbutrin".
+  // Rule: always support wide phrase variety — never require a single rigid form.
+
+  // "mark <name> taken" / "mark <name> as taken"
+  if (/\bmark\b.+\b(?:as\s+)?taken\b/.test(t)) {
+    return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
+  }
+  // "took <name>" / "take <name>" / "taken <name>" (no "my supplements" to avoid LOG_SUPPLEMENT)
+  if (/\b(?:took|take|taken)\b/.test(t) && !/\b(?:my\s+)?supplements?\b/.test(t)) {
+    return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
   }
 
   return null;
@@ -403,11 +424,40 @@ function extractSupplementTakenPrefill(
   const t = text.trim().toLowerCase();
   if (!t) return null;
 
-  // Match patterns: "mark [as] taken [my] <name>", "i/just took [my] <name>", "taken my <name>"
-  const m = t.match(/(?:mark\s+(?:as\s+)?taken|(?:i|just)\s+took|taken)\s+(?:my\s+)?(.+?)(?:\s+as\s+taken)?$/i);
-  if (!m) return null;
+  let raw: string | undefined;
 
-  const raw = m[1].trim();
+  // Pattern A: "mark [as] taken [my] <name>" — name AFTER "taken"
+  const mA = t.match(/\bmark\s+(?:as\s+)?taken\s+(?:my\s+)?(.+?)(?:\s+as\s+taken)?$/i);
+  if (mA) raw = mA[1].trim();
+
+  // Pattern B: "mark [my] <name> [as] taken" — name BETWEEN "mark" and "taken"
+  if (!raw) {
+    const mB = t.match(/\bmark\s+(?:my\s+)?(.+?)\s+(?:as\s+)?taken\b/i);
+    if (mB) raw = mB[1].trim();
+  }
+
+  // Pattern C: "i/just/already took [my] <name>" / "have taken <name>"
+  if (!raw) {
+    const mC = t.match(/\b(?:i\s+)?(?:just\s+|already\s+)?(?:took|have\s+taken)\s+(?:my\s+)?(.+)/i);
+    if (mC) raw = mC[1].trim();
+  }
+
+  // Pattern D: "taken my <name>"
+  if (!raw) {
+    const mD = t.match(/\btaken\s+my\s+(.+)/i);
+    if (mD) raw = mD[1].trim();
+  }
+
+  // Pattern E: "took my <name>" / "took <name>" / "take [my] <name>" / "taken <name>"
+  if (!raw) {
+    const mE = t.match(/\b(?:took|take|taken)\s+(?:my\s+)?(.+)/i);
+    if (mE) raw = mE[1].trim();
+  }
+
+  if (!raw) return null;
+
+  // Strip trailing filler
+  raw = raw.replace(/\s+(?:as\s+taken|now|today|just\s+now)$/i, '').trim();
   if (!raw) return null;
 
   // Try fuzzy-matching the raw spoken text against database first (preserves "vitamin d" etc.)
@@ -435,21 +485,27 @@ function extractMedicationTakenPrefill(text: string): SupplementTakenPrefill | n
   const t = text.trim().toLowerCase();
   if (!t) return null;
 
-  // Pattern 1: "[mark|add|log] [my] <name> taken" — name before "taken"
+  const stripMedWords = (s: string) =>
+    s.replace(/\b(medication|medicine|med|pill|tablet|capsule)s?\b/gi, '').trim();
+
+  // Pattern 1: "[mark|add|log] [my] <name> [as] taken" — name before "taken"
   const m1 = t.match(/(?:mark|add|log)\s+(?:my\s+)?(.+?)\s+(?:as\s+)?taken\b/i);
   if (m1) {
-    const raw = m1[1]
-      .replace(/\b(medication|medicine|med|pill|tablet|capsule)s?\b/gi, '')
-      .trim();
+    const raw = stripMedWords(m1[1]);
     if (raw) return { name: toTitleCase(raw) };
   }
 
-  // Pattern 2: "[mark|add] taken [my] <name>" — name after "taken" (same word order as supplement)
+  // Pattern 2: "[mark|add] [as] taken [my] <name>" — name after "taken"
   const m2 = t.match(/(?:mark|add)\s+(?:as\s+)?taken\s+(?:my\s+)?(.+)/i);
   if (m2) {
-    const raw = m2[1]
-      .replace(/\b(medication|medicine|med|pill|tablet|capsule)s?\b/gi, '')
-      .trim();
+    const raw = stripMedWords(m2[1]);
+    if (raw) return { name: toTitleCase(raw) };
+  }
+
+  // Pattern 3: "took [my] <name>" / "take [my] <name>" / "taken <name>"
+  const m3 = t.match(/\b(?:took|take|taken)\s+(?:my\s+)?(.+)/i);
+  if (m3) {
+    const raw = stripMedWords(m3[1]);
     if (raw) return { name: toTitleCase(raw) };
   }
 

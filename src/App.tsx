@@ -296,15 +296,8 @@ function AppContent() {
             });
             setInlineToast(`✓ ${matchedMed.name} marked taken`);
           } else {
-            // 3. No schedule match at all — log with spoken name as supplement
-            addSupplementLog({
-              name: supplementTakenPrefill.name,
-              date: nowDate,
-              time: nowTime,
-              notes: 'Voice logged · mark taken',
-              sourceTranscript: label,
-            });
-            setInlineToast(`✓ ${supplementTakenPrefill.name} marked taken`);
+            // 3. No match — never log unknown items; inform the user instead
+            setInlineToast(`❌ "${supplementTakenPrefill.name}" not found in your schedules`);
           }
         }
 
@@ -326,21 +319,27 @@ function AppContent() {
           s => s.patientId === state.activePatientId && s.status === 'active'
         );
         const matchedMed = fuzzyMatchSchedule(medSchedules, supplementTakenPrefill.name);
-        const medName = matchedMed?.name ?? supplementTakenPrefill.name;
+        if (!matchedMed) {
+          // Never log medications that don't exist in schedules
+          setInlineToast(`❌ "${supplementTakenPrefill.name}" not found in your medications`);
+          if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+          inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+          break;
+        }
         const medNow = new Date();
         addMedicationLog({
-          name: medName,
+          name: matchedMed.name,
           type: 'medication',
-          dosage: matchedMed?.dosage,
-          route: matchedMed?.route,
+          dosage: matchedMed.dosage,
+          route: matchedMed.route,
           date: medNow.toISOString().slice(0, 10),
           time: `${String(medNow.getHours()).padStart(2, '0')}:${String(medNow.getMinutes()).padStart(2, '0')}`,
-          conditionId: matchedMed?.conditionId,
-          conditionName: matchedMed?.conditionName,
+          conditionId: matchedMed.conditionId,
+          conditionName: matchedMed.conditionName,
           effectiveness: 'moderate',
           notes: 'Voice logged · mark taken',
         });
-        setInlineToast(`✓ ${medName} marked taken`);
+        setInlineToast(`✓ ${matchedMed.name} marked taken`);
         if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
         inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
         // Keep wake word active — no disableWakeWord()

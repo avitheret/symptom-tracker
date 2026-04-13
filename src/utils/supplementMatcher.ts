@@ -93,6 +93,20 @@ export function fuzzyMatchSupplementName<T extends { name: string }>(
 
   if (spokenTokens.length === 0) return undefined;
 
+  // Pass 4.5: first spoken token (≥4 chars) is a prefix of the item name (no spaces)
+  // AND covers ≥35% of it. Handles STT word-splitting of drug names:
+  //   "well between" → "Wellbutrin"  ("well".length/10 = 40% ≥ 35%)
+  //   "ome ga" → "Omega 3"           ("ome".length/4 = 75% ≥ 35%)
+  if (spokenTokens.length > 0 && spokenTokens[0].length >= 4) {
+    r = items.find(e => {
+      const compactName = n(e.name).replace(/\s+/g, '');
+      const firstTok = spokenTokens[0];
+      return compactName.startsWith(firstTok) &&
+        firstTok.length / compactName.length >= 0.35;
+    });
+    if (r) return r;
+  }
+
   // Pass 5: every spoken token fuzzily matches some schedule token
   r = items.find(e => {
     const st = schedTokens(e.name);
