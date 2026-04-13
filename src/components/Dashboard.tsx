@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, ClipboardList, TrendingUp, Activity, ChevronDown, UtensilsCrossed, FlaskConical, Mic, Zap as ZapIcon } from 'lucide-react';
+import { Plus, Settings, Heart, Zap, Pill, Tag, CheckCircle, TrendingUp, ChevronDown, UtensilsCrossed, FlaskConical, Mic, Zap as ZapIcon } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import TrackingModal from './TrackingModal';
@@ -17,7 +17,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.8.4';
+const APP_VERSION = 'v3.9.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -289,7 +289,6 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
     e => e.reviewStatus !== 'to_review' && e.reviewStatus !== 'disapproved',
   );
   const todayCheckIn   = getTodayCheckIn();
-  const hasPendingVoiceReviews = patientEntries.some(e => e.reviewStatus === 'to_review');
   const hasDemoData = useMemo(() => (
     state.entries.some(e => e.id.startsWith('demo-')) ||
     state.checkIns.some(e => e.id.startsWith('demo-')) ||
@@ -320,8 +319,6 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
   }, []);
 
   // Demo auto-load disabled — users start with a blank slate.
-
-  const show = (id: WidgetId) => visibleWidgets.includes(id);
 
   const hour        = new Date().getHours();
   const todayLabel  = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -542,229 +539,235 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
         </div>
       )}
 
-      {/* ── Stats widget ──────────────────────────────────── */}
-      {show('stats') && (
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard value={totalEntries} label="Total"        accentClass="bg-blue-600" />
-          <StatCard value={thisWeek}     label="This Week"    accentClass="bg-emerald-500" />
-          <StatCard value={avgSeverity}  label="Avg Severity" accentClass="bg-amber-500" />
-        </div>
-      )}
-
-      {/* ── Forecast widget ───────────────────────────────── */}
-      {show('forecast') && <ForecastCard />}
-
-      {/* ── Daily Explainer widget ────────────────────────── */}
-      {show('explainToday') && <DailyExplainerCard />}
-
-      {/* ── Weather widget ────────────────────────────────── */}
-      {show('weather') && <WeatherCard />}
-
-      {/* ── Daily Check-In widget ─────────────────────────── */}
-      {show('checkin') && (
-        <section>
-          <SectionHeader title="Daily Check-In" />
-          {todayCheckIn ? (
-            <Card padding={false}>
-              <div className="flex items-center gap-3 p-4 border-b border-slate-50">
-                <div className="p-2 bg-rose-50 rounded-xl">
-                  <CheckCircle size={18} className="text-rose-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Today's check-in complete</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{todayCheckIn.time}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
-                {[
-                  { label: 'Health', value: `${todayCheckIn.healthScore}/10` },
-                  { label: 'Energy', value: `${todayCheckIn.energy}/10` },
-                  { label: 'Mood',   value: `${todayCheckIn.mood}/10` },
-                  { label: 'Sleep',  value: `${todayCheckIn.sleepHours}h` },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-slate-50 rounded-xl py-3 text-center">
-                    <p className="text-sm font-bold text-slate-800">{value}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{label}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="px-4 pb-4 flex items-center gap-2">
-                <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                  todayCheckIn.stress === 'high'   ? 'bg-red-100 text-red-600' :
-                  todayCheckIn.stress === 'medium' ? 'bg-amber-100 text-amber-600' :
-                  'bg-green-100 text-green-600'
-                }`}>
-                  {todayCheckIn.stress.charAt(0).toUpperCase() + todayCheckIn.stress.slice(1)} stress
-                </span>
-                {todayCheckIn.notes && (
-                  <p className="text-xs text-slate-500 italic truncate">{todayCheckIn.notes}</p>
+      {/* ── Customisable widgets rendered in user-defined order ─── */}
+      {visibleWidgets.map(id => {
+        switch (id) {
+          case 'stats':
+            return (
+              <div key="stats" className="grid grid-cols-3 gap-3">
+                {patientEntries.length > 0 ? (
+                  <>
+                    <StatCard value={totalEntries} label="Total"        accentClass="bg-blue-600" />
+                    <StatCard value={thisWeek}     label="This Week"    accentClass="bg-emerald-500" />
+                    <StatCard value={avgSeverity}  label="Avg Severity" accentClass="bg-amber-500" />
+                  </>
+                ) : (
+                  <>
+                    <StatCard value="0" label="Total"        accentClass="bg-blue-600" />
+                    <StatCard value="0" label="This Week"    accentClass="bg-emerald-500" />
+                    <StatCard value="—" label="Avg Severity" accentClass="bg-amber-500" />
+                  </>
                 )}
               </div>
-            </Card>
-          ) : (
-            <Card dashed>
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-rose-50 rounded-xl">
-                    <Heart size={18} className="text-rose-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700">No check-in yet today</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Takes less than 30 seconds.</p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onOpenCheckIn}
-                  className="text-rose-600 border-rose-200 hover:bg-rose-50 flex-shrink-0"
-                >
-                  Check In
-                </Button>
-              </div>
-            </Card>
-          )}
-        </section>
-      )}
+            );
 
-      {/* ── Conditions widget ─────────────────────────────── */}
-      {show('conditions') && (
-        <section>
-          <SectionHeader
-            title={activePatient ? `${possessiveName(activePatient.name)} Conditions` : 'Conditions'}
-            action={{ label: 'View all →', onClick: () => setView('conditions') }}
-          />
-          {conditions.length === 0 ? (
-            <Card dashed>
-              <EmptyState
-                icon={<Tag size={22} />}
-                title="No conditions yet"
-                description="Add a condition to start tracking your symptoms."
-                action={{ label: 'Add Your First Condition', onClick: () => setShowAddCondition(true), icon: <Plus size={14} /> }}
-                compact
-              />
-            </Card>
-          ) : (
-            <>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {(showAllConditions ? conditions : conditions.slice(0, 2)).map(c => {
-                  const conditionEntries = patientEntries.filter(e => e.conditionId === c.id);
-                  const lastEntry = [...conditionEntries].sort((a, b) => b.createdAt - a.createdAt)[0];
-                  return (
-                    <ConditionCard
-                      key={c.id}
-                      condition={c}
-                      entryCount={conditionEntries.length}
-                      lastEntryDate={lastEntry?.date}
-                      onLog={() => setTrackingCondition(c)}
-                      onClick={() => { selectCondition(c.id); setView('conditions'); }}
-                      onRemove={() => removeConditionFromPatient(activePatient!.id, c.id)}
-                    />
-                  );
-                })}
-              </div>
-              {conditions.length > 2 && (
-                <button
-                  onClick={() => setShowAllConditions(v => !v)}
-                  className="w-full mt-3 py-2.5 text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center justify-center gap-1.5 rounded-xl hover:bg-blue-50 transition-colors"
-                >
-                  <ChevronDown size={14} className={`transition-transform ${showAllConditions ? 'rotate-180' : ''}`} />
-                  {showAllConditions ? 'Show less' : `Show ${conditions.length - 2} more condition${conditions.length - 2 !== 1 ? 's' : ''}`}
-                </button>
-              )}
-            </>
-          )}
-        </section>
-      )}
+          case 'forecast':
+            return <ForecastCard key="forecast" />;
 
-      {/* ── Recent Meals widget ───────────────────────────── */}
-      {show('recentMeals') && patientMeals.length > 0 && (
-        <RecentMealsWidget
-          logs={patientMeals}
-          onSeeAll={() => setView('meals')}
-          onEditMeal={onEditMeal}
-        />
-      )}
+          case 'explainToday':
+            return <DailyExplainerCard key="explainToday" />;
 
-      {/* ── Recent Log widget ─────────────────────────────── */}
-      {show('recentLog') && (patientEntries.length > 0 || patientMeals.length > 0 || patientSupplements.length > 0) && (
-        <RecentLogWidget
-          entries={patientEntries}
-          conditions={conditions}
-          foodLogs={patientMeals}
-          supplementLogs={patientSupplements}
-          onSeeAll={() => setView('reports')}
-          onClickMeal={onEditMeal}
-          onClickEntry={(entry) => {
-            const cond = conditions.find(c => c.id === entry.conditionId);
-            if (cond) { setTrackingCondition(cond); setEditingEntry(entry); }
-          }}
-        />
-      )}
+          case 'weather':
+            return <WeatherCard key="weather" />;
 
-      {/* ── Voice Review widget ──────────────────────────── */}
-      {(show('voiceReview') || hasPendingVoiceReviews) && <ReviewQueue conditions={conditions} />}
+          case 'checkin':
+            return (
+              <section key="checkin">
+                <SectionHeader title="Daily Check-In" />
+                {todayCheckIn ? (
+                  <Card padding={false}>
+                    <div className="flex items-center gap-3 p-4 border-b border-slate-50">
+                      <div className="p-2 bg-rose-50 rounded-xl">
+                        <CheckCircle size={18} className="text-rose-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Today's check-in complete</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{todayCheckIn.time}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
+                      {[
+                        { label: 'Health', value: `${todayCheckIn.healthScore}/10` },
+                        { label: 'Energy', value: `${todayCheckIn.energy}/10` },
+                        { label: 'Mood',   value: `${todayCheckIn.mood}/10` },
+                        { label: 'Sleep',  value: `${todayCheckIn.sleepHours}h` },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="bg-slate-50 rounded-xl py-3 text-center">
+                          <p className="text-sm font-bold text-slate-800">{value}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-4 pb-4 flex items-center gap-2">
+                      <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                        todayCheckIn.stress === 'high'   ? 'bg-red-100 text-red-600' :
+                        todayCheckIn.stress === 'medium' ? 'bg-amber-100 text-amber-600' :
+                        'bg-green-100 text-green-600'
+                      }`}>
+                        {todayCheckIn.stress.charAt(0).toUpperCase() + todayCheckIn.stress.slice(1)} stress
+                      </span>
+                      {todayCheckIn.notes && (
+                        <p className="text-xs text-slate-500 italic truncate">{todayCheckIn.notes}</p>
+                      )}
+                    </div>
+                  </Card>
+                ) : (
+                  <Card dashed>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-rose-50 rounded-xl">
+                          <Heart size={18} className="text-rose-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-700">No check-in yet today</p>
+                          <p className="text-xs text-slate-400 mt-0.5">Takes less than 30 seconds.</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onOpenCheckIn}
+                        className="text-rose-600 border-rose-200 hover:bg-rose-50 flex-shrink-0"
+                      >
+                        Check In
+                      </Button>
+                    </div>
+                  </Card>
+                )}
+              </section>
+            );
 
-      {/* ── AI Insights widget ─────────────────────────────── */}
-      {show('aiInsights') && <AIInsightsCard />}
-
-      {/* ── Meds schedule widget ────────────────────────── */}
-      {show('medSchedule') && (
-        <MedScheduleWidget onAddSchedule={onOpenMedSchedule ?? (() => {})} />
-      )}
-
-      {/* ── Supplements widget ─────────────────────────────── */}
-      {show('supplements') && (
-        <SupplementScheduleWidget onAddSchedule={onOpenSupplementSchedule ?? (() => {})} />
-      )}
-
-      {/* ── Quick Log widget ──────────────────────────────── */}
-      {show('quickActions') && (
-        <section>
-          <SectionHeader title="Quick Log" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {conditions.slice(0, 3).map(c => (
-              <button
-                key={c.id}
-                onClick={() => setTrackingCondition(c)}
-                className="flex items-center gap-3 bg-white border border-slate-100 rounded-2xl px-4 py-4 text-left shadow-sm active:scale-95 transition-transform min-h-[64px]"
-              >
-                <span
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: c.color }}
+          case 'conditions':
+            return (
+              <section key="conditions">
+                <SectionHeader
+                  title={activePatient ? `${possessiveName(activePatient.name)} Conditions` : 'Conditions'}
+                  action={{ label: 'View all →', onClick: () => setView('conditions') }}
                 />
-                <span className="text-sm font-semibold text-slate-800 truncate leading-tight">
-                  {c.name}
-                </span>
-              </button>
-            ))}
-            <button
-              onClick={() => setShowAddCondition(true)}
-              className="flex items-center gap-3 bg-slate-50 border border-dashed border-slate-200 rounded-2xl px-4 py-4 text-left active:bg-slate-100 transition-colors min-h-[64px]"
-            >
-              <span className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
-                <Plus size={13} className="text-slate-500" />
-              </span>
-              <span className="text-sm font-medium text-slate-400">Add Condition</span>
-            </button>
-          </div>
-        </section>
-      )}
+                {conditions.length === 0 ? (
+                  <Card dashed>
+                    <EmptyState
+                      icon={<Tag size={22} />}
+                      title="No conditions yet"
+                      description="Add a condition to start tracking your symptoms."
+                      action={{ label: 'Add Your First Condition', onClick: () => setShowAddCondition(true), icon: <Plus size={14} /> }}
+                      compact
+                    />
+                  </Card>
+                ) : (
+                  <>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {(showAllConditions ? conditions : conditions.slice(0, 2)).map(c => {
+                        const conditionEntries = patientEntries.filter(e => e.conditionId === c.id);
+                        const lastEntry = [...conditionEntries].sort((a, b) => b.createdAt - a.createdAt)[0];
+                        return (
+                          <ConditionCard
+                            key={c.id}
+                            condition={c}
+                            entryCount={conditionEntries.length}
+                            lastEntryDate={lastEntry?.date}
+                            onLog={() => setTrackingCondition(c)}
+                            onClick={() => { selectCondition(c.id); setView('conditions'); }}
+                            onRemove={() => removeConditionFromPatient(activePatient!.id, c.id)}
+                          />
+                        );
+                      })}
+                    </div>
+                    {conditions.length > 2 && (
+                      <button
+                        onClick={() => setShowAllConditions(v => !v)}
+                        className="w-full mt-3 py-2.5 text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center justify-center gap-1.5 rounded-xl hover:bg-blue-50 transition-colors"
+                      >
+                        <ChevronDown size={14} className={`transition-transform ${showAllConditions ? 'rotate-180' : ''}`} />
+                        {showAllConditions ? 'Show less' : `Show ${conditions.length - 2} more condition${conditions.length - 2 !== 1 ? 's' : ''}`}
+                      </button>
+                    )}
+                  </>
+                )}
+              </section>
+            );
 
+          case 'recentMeals':
+            return patientMeals.length > 0 ? (
+              <RecentMealsWidget
+                key="recentMeals"
+                logs={patientMeals}
+                onSeeAll={() => setView('meals')}
+                onEditMeal={onEditMeal}
+              />
+            ) : null;
 
+          case 'recentLog':
+            return (patientEntries.length > 0 || patientMeals.length > 0 || patientSupplements.length > 0) ? (
+              <RecentLogWidget
+                key="recentLog"
+                entries={patientEntries}
+                conditions={conditions}
+                foodLogs={patientMeals}
+                supplementLogs={patientSupplements}
+                onSeeAll={() => setView('reports')}
+                onClickMeal={onEditMeal}
+                onClickEntry={(entry) => {
+                  const cond = conditions.find(c => c.id === entry.conditionId);
+                  if (cond) { setTrackingCondition(cond); setEditingEntry(entry); }
+                }}
+              />
+            ) : null;
 
-      {/* ── Empty-state stat cards (shown when no logs yet) ── */}
-      {patientEntries.length === 0 && show('stats') && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { icon: ClipboardList, label: 'Total',        value: '0', accentClass: 'bg-blue-600' },
-            { icon: TrendingUp,    label: 'This Week',    value: '0', accentClass: 'bg-emerald-500' },
-            { icon: Activity,      label: 'Avg Severity', value: '—', accentClass: 'bg-amber-500' },
-          ].map(({ label, value, accentClass }) => (
-            <StatCard key={label} value={value} label={label} accentClass={accentClass} />
-          ))}
-        </div>
-      )}
+          case 'voiceReview':
+            return <ReviewQueue key="voiceReview" conditions={conditions} />;
+
+          case 'aiInsights':
+            return <AIInsightsCard key="aiInsights" />;
+
+          case 'medSchedule':
+            return (
+              <MedScheduleWidget
+                key="medSchedule"
+                onAddSchedule={onOpenMedSchedule ?? (() => {})}
+              />
+            );
+
+          case 'supplements':
+            return (
+              <SupplementScheduleWidget
+                key="supplements"
+                onAddSchedule={onOpenSupplementSchedule ?? (() => {})}
+              />
+            );
+
+          case 'quickActions':
+            return (
+              <section key="quickActions">
+                <SectionHeader title="Quick Log" />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {conditions.slice(0, 3).map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => setTrackingCondition(c)}
+                      className="flex items-center gap-3 bg-white border border-slate-100 rounded-2xl px-4 py-4 text-left shadow-sm active:scale-95 transition-transform min-h-[64px]"
+                    >
+                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: c.color }} />
+                      <span className="text-sm font-semibold text-slate-800 truncate leading-tight">{c.name}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setShowAddCondition(true)}
+                    className="flex items-center gap-3 bg-slate-50 border border-dashed border-slate-200 rounded-2xl px-4 py-4 text-left active:bg-slate-100 transition-colors min-h-[64px]"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
+                      <Plus size={13} className="text-slate-500" />
+                    </span>
+                    <span className="text-sm font-medium text-slate-400">Add Condition</span>
+                  </button>
+                </div>
+              </section>
+            );
+
+          default:
+            return null;
+        }
+      })}
 
       {/* ── Demo data ────────────────────────────────────── */}
       <div className="flex items-center justify-center gap-3 pt-2 pb-1">
