@@ -88,7 +88,7 @@ function MedLogList({ logs, deleteMedicationLog }: { logs: MedicationLog[]; dele
               </span>
               <button
                 onClick={() => deleteMedicationLog(log.id)}
-                className="text-slate-300 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-2 rounded-lg hover:bg-red-50 min-h-[36px] min-w-[36px] flex items-center justify-center"
+                className="text-slate-300 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-2 rounded-lg hover:bg-red-50 min-h-[44px] min-w-[44px] flex items-center justify-center"
                 title="Delete log"
               >
                 <Trash2 size={15} />
@@ -218,7 +218,7 @@ export default function MedicationTab({ onOpenMedSchedule, onEditMedSchedule }: 
         <p className="text-sm font-semibold text-slate-700">{logs.length} log{logs.length !== 1 ? 's' : ''}</p>
         <button
           onClick={() => medCsvExport(logs)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 text-white rounded-xl text-xs font-medium hover:bg-violet-700 transition-colors min-h-[36px]"
+          className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 text-white rounded-xl text-xs font-medium hover:bg-violet-700 transition-colors min-h-[44px]"
         >
           <Download size={13} />Export CSV
         </button>

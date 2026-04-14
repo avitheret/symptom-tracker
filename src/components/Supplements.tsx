@@ -79,7 +79,7 @@ function SupLogList({ logs, onDelete }: { logs: SupplementLog[]; onDelete: (id: 
             </div>
             <button
               onClick={() => onDelete(log.id)}
-              className="text-slate-300 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-2 rounded-lg hover:bg-red-50 min-h-[36px] min-w-[36px] flex items-center justify-center flex-shrink-0"
+              className="text-slate-300 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-2 rounded-lg hover:bg-red-50 min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
               title="Delete log"
             >
               <Trash2 size={15} />
@@ -161,7 +161,7 @@ function LogTab({ onOpenSupplementModal }: { onOpenSupplementModal?: () => void 
         <p className="text-sm font-semibold text-slate-700">{logs.length} log{logs.length !== 1 ? 's' : ''}</p>
         <button
           onClick={() => supplementCsvExport(logs)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 text-white rounded-xl text-xs font-medium hover:bg-teal-700 transition-colors min-h-[36px]"
+          className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 text-white rounded-xl text-xs font-medium hover:bg-teal-700 transition-colors min-h-[44px]"
         >
           <Download size={13} />Export CSV
         </button>

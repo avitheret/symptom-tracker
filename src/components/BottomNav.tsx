@@ -49,7 +49,7 @@ export default function BottomNav() {
               onClick={() => setView(defaultView)}
               aria-label={label}
               aria-current={active ? 'page' : undefined}
-              className="relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full py-2 select-none active:scale-95 transition-transform"
+              className="relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full py-2 min-h-[44px] select-none active:scale-95 transition-transform"
             >
               {active && (
                 <span className="absolute inset-x-2 top-1.5 bottom-1.5 bg-blue-50 rounded-2xl" />

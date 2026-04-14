@@ -68,7 +68,7 @@ export default function ConditionCard({ condition, entryCount, lastEntryDate, on
           {onRemove && (
             <button
               onClick={e => { e.stopPropagation(); setConfirmRemove(true); }}
-              className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors -mr-1 -mt-1"
+              className="flex-shrink-0 w-6 h-6 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors -mr-1 -mt-1"
               title="Remove condition"
             >
               <X size={13} />

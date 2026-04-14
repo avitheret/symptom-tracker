@@ -185,7 +185,7 @@ function RemoveButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors min-h-[28px] min-w-[28px] flex items-center justify-center active:scale-[0.95]"
+      className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-[0.95]"
       aria-label="Remove"
     >
       <Trash2 size={12} />

@@ -70,7 +70,7 @@ export function Sheet({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="flex-shrink-0 ml-3 text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 active:bg-slate-200 transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center"
+            className="flex-shrink-0 ml-3 text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 active:bg-slate-200 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
           >
             <X size={18} />
           </button>
