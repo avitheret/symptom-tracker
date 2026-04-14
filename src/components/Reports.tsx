@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Trash2, Download, BarChart2, List, TrendingUp, Stethoscope, GitMerge, Pill, Zap, Brain, Cloud, UtensilsCrossed, FlaskConical } from 'lucide-react';
+import { Trash2, Download, BarChart2, List, TrendingUp, Stethoscope, GitMerge, Pill, Zap, Brain, Cloud, UtensilsCrossed, FlaskConical, Activity } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { useApp } from '../contexts/AppContext';
 import DoctorReport from './DoctorReport';
+import OverviewChart from './OverviewChart';
 import CorrelationCharts from './CorrelationCharts';
 import MedicationTab from './MedicationTab';
 import Supplements from './Supplements';
@@ -21,7 +22,7 @@ import { MEAL_TYPES } from '../types';
 
 type Range     = '7d' | '30d' | '90d' | 'all';
 type ChartType = 'line' | 'bar';
-type ReportTab = 'chart' | 'log' | 'triggers' | 'rootCauses' | 'weather' | 'food' | 'medications' | 'supplements' | 'correlations' | 'doctor';
+type ReportTab = 'overview' | 'chart' | 'log' | 'triggers' | 'rootCauses' | 'weather' | 'food' | 'medications' | 'supplements' | 'correlations' | 'doctor';
 
 const RANGE_OPTIONS: Array<{ id: Range; label: string }> = [
   { id: '7d',  label: '7 Days'   },
@@ -31,6 +32,7 @@ const RANGE_OPTIONS: Array<{ id: Range; label: string }> = [
 ];
 
 const REPORT_TABS: TabItem<ReportTab>[] = [
+  { id: 'overview',     label: 'Overview',     icon: <Activity    size={14} /> },
   { id: 'chart',        label: 'Chart',        icon: <BarChart2   size={14} /> },
   { id: 'log',          label: 'Log',          icon: <List        size={14} /> },
   { id: 'triggers',     label: 'Triggers',     icon: <Zap         size={14} /> },
@@ -361,6 +363,9 @@ export default function Reports() {
 
       {/* ── Tab bar ───────────────────────────────────────── */}
       <TabBar tabs={REPORT_TABS} active={tab} onChange={setTab} />
+
+      {/* ── Overview tab (multi-factor composed chart) ───── */}
+      {tab === 'overview' && <OverviewChart />}
 
       {/* ── Chart tab ─────────────────────────────────────── */}
       {tab === 'chart' && (
