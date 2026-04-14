@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Sparkles, AlertTriangle, AlertCircle, Info, Lightbulb, Activity, Pill, X, Loader2, FileText, Zap, CheckCircle2, Shield } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { generateInsights, getCachedInsights } from '../utils/claudeInsights';
-import { Button, Badge, SectionHeader } from './ui';
+import { Button, Badge, SectionHeader, Skeleton } from './ui';
 
 
 const SEVERITY_STYLES: Record<string, { border: string; bg: string; icon: string; Icon: typeof AlertTriangle }> = {
@@ -33,6 +33,22 @@ function timeAgo(ts: number): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+function SkeletonInsightCard() {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-2">
+      <div className="flex gap-2.5 pr-6">
+        <Skeleton className="h-5 w-5 flex-shrink-0" />
+        <div className="space-y-2 min-w-0 flex-1">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-[90%]" />
+          <Skeleton className="h-3 w-[60%]" />
+        </div>
+      </div>
+      <Skeleton className="h-6 w-20" />
+    </div>
+  );
 }
 
 export default function AIInsightsCard() {
@@ -137,15 +153,24 @@ export default function AIInsightsCard() {
           )}
 
           {/* Provenance label */}
-          {provenance?.entryCount != null && provenance?.daySpan != null && (
+          {!loading && provenance?.entryCount != null && provenance?.daySpan != null && (
             <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
               <Shield size={10} />
               <span>Based on {provenance.entryCount} entries over {provenance.daySpan} days</span>
             </div>
           )}
 
+          {/* Skeleton loaders while generating */}
+          {loading && (
+            <>
+              {[1, 2, 3].map(i => (
+                <SkeletonInsightCard key={`skeleton-${i}`} />
+              ))}
+            </>
+          )}
+
           {/* Insights list */}
-          {patientInsights.map(insight => {
+          {!loading && patientInsights.map(insight => {
             const style = SEVERITY_STYLES[insight.severity] ?? SEVERITY_STYLES.info;
             const CatIcon = CATEGORY_ICON[insight.category] ?? Lightbulb;
             const conf = insight.confidence ? CONFIDENCE_BADGE[insight.confidence] : null;

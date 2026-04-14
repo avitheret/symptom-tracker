@@ -25,3 +25,5 @@ export { TabBar }           from './TabBar';
 export type { TabItem }     from './TabBar';
 
 export { StatCard }         from './StatCard';
+
+export { Skeleton }         from './Skeleton';
