@@ -46,6 +46,7 @@ import { extractFromNote } from './utils/noteExtractor';
 import { parseVoiceTranscript, hasContent, type NLPParseResult } from './utils/nlpVoiceParser';
 import VoiceConfirmationCard from './components/VoiceConfirmationCard';
 import BadDaySheet from './components/BadDaySheet';
+import Landing from './components/Landing';
 import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType, SupplementSchedule } from './types';
 
 // ─── Fuzzy condition / symptom matching ──────────────────────────────────────
@@ -554,10 +555,17 @@ function AppContent() {
     );
   }
 
-  // Mandatory login gate — FROZEN (re-enable by uncommenting)
-  // if (!isAuthenticated) {
-  //   return <AuthModal onClose={() => {}} required />;
-  // }
+  // Logged-out users see the landing page instead of the full app.
+  // AuthModal is rendered here too so the CTA can open it without going
+  // through the full app shell.
+  if (!isAuthenticated) {
+    return (
+      <>
+        <Landing onGetStarted={() => setShowAuth(true)} />
+        {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+      </>
+    );
+  }
 
   return (
     <div className={`min-h-screen flex flex-col ${state.view === 'dashboard' ? 'bg-[#1a1f3c]' : 'bg-slate-50'}`}>
