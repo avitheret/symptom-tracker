@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { Cloud, Droplets, Thermometer, AlertTriangle, MapPin, Info } from 'lucide-react';
 import {
   getStoredObservations, getSavedLocation, getWeatherAlerts,
+  computePressureSensitivity,
   type WeatherObservation,
 } from '../utils/weatherService';
 import type { TrackingEntry } from '../types';
@@ -45,9 +46,50 @@ function PressureBar({ change, max = 6 }: { change: number; max?: number }) {
   );
 }
 
+function SensitivityRow({
+  label, dropDays, stableDays, dropSev, stableSev,
+}: {
+  label: string;
+  dropDays: number;
+  stableDays: number;
+  dropSev: number | null;
+  stableSev: number | null;
+}) {
+  const delta = dropSev !== null && stableSev !== null ? dropSev - stableSev : null;
+  const worse = delta !== null && delta > 0;
+  return (
+    <div>
+      <p className="text-xs font-medium text-slate-500 mb-1.5">{label}</p>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 bg-red-50 rounded-xl p-3 text-center">
+          <p className="text-[10px] text-slate-500 mb-0.5">Drop days <span className="text-slate-400">({dropDays})</span></p>
+          <p className="text-xl font-bold text-red-600">{dropSev !== null ? dropSev.toFixed(1) : '—'}</p>
+        </div>
+        <div className="flex-shrink-0 flex flex-col items-center gap-0.5 w-10">
+          {delta !== null && (
+            <span className={`text-sm font-bold ${worse ? 'text-red-500' : 'text-emerald-600'}`}>
+              {worse ? '+' : ''}{delta.toFixed(1)}
+            </span>
+          )}
+          <span className="text-[10px] text-slate-300">vs</span>
+        </div>
+        <div className="flex-1 bg-slate-50 rounded-xl p-3 text-center">
+          <p className="text-[10px] text-slate-500 mb-0.5">Stable days <span className="text-slate-400">({stableDays})</span></p>
+          <p className="text-xl font-bold text-slate-500">{stableSev !== null ? stableSev.toFixed(1) : '—'}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WeatherReportSection({ entries, dateFrom }: Props) {
   const [showAll, setShowAll] = useState(false);
   const location = getSavedLocation();
+
+  const sensitivity = useMemo(
+    () => computePressureSensitivity(entries),
+    [entries],
+  );
 
   const observations = useMemo(() => {
     const all = getStoredObservations();
@@ -166,6 +208,56 @@ export default function WeatherReportSection({ entries, dateFrom }: Props) {
           ))}
         </div>
       </Card>
+
+      {/* ── Pressure sensitivity ─────────────────────────────────────────── */}
+      {sensitivity.dropDays > 0 && (
+        <Card>
+          <CardHeader
+            title="Pressure Sensitivity"
+            subtitle="Avg symptom severity: pressure-drop vs stable days"
+          />
+          {sensitivity.enoughData ? (
+            <div className="space-y-4">
+              {/* Same-day row */}
+              <SensitivityRow
+                label="Same day"
+                dropDays={sensitivity.dropDays}
+                stableDays={sensitivity.stableDays}
+                dropSev={sensitivity.sameDayDropSeverity}
+                stableSev={sensitivity.sameDayStableSeverity}
+              />
+              {/* Next-day row */}
+              <SensitivityRow
+                label="Next day"
+                dropDays={sensitivity.dropDays}
+                stableDays={sensitivity.stableDays}
+                dropSev={sensitivity.nextDayDropSeverity}
+                stableSev={sensitivity.nextDayStableSeverity}
+              />
+              {/* Footer stats */}
+              <div className="flex items-center justify-between border-t border-slate-50 pt-2">
+                <span className="text-[10px] text-slate-400">
+                  Symptoms on drop days: <strong className="text-slate-600">{sensitivity.dropSymptomPct}%</strong>
+                  {' '}vs stable: <strong className="text-slate-600">{sensitivity.stableSymptomPct}%</strong>
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center py-3 gap-1">
+              <p className="text-sm text-slate-500 font-medium">Still collecting</p>
+              <p className="text-[10px] text-slate-400">
+                {sensitivity.dropDays < 3
+                  ? `${sensitivity.dropDays}/3 pressure-drop days logged`
+                  : `${sensitivity.stableDays}/3 stable days logged`}
+                {' '}— check back as more weather data accumulates
+              </p>
+            </div>
+          )}
+          <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
+            Drop: ≥5 hPa fall in 6 h · Stable: all 6 h readings &lt;2 hPa · Severity 0–10
+          </p>
+        </Card>
+      )}
 
       {/* ── Insight banners ──────────────────────────────────────────────── */}
       {stats.pressureDropOverlap !== null && stats.pressureDropOverlap >= 50 && stats.pressureDropDays >= 2 && (

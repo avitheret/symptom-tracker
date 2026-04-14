@@ -42,6 +42,8 @@ import { useMedScheduleSync } from './hooks/useMedScheduleSync';
 import { useSupplementScheduleSync } from './hooks/useSupplementScheduleSync';
 import { useCloudStateSync } from './hooks/useCloudStateSync';
 import { extractFromNote } from './utils/noteExtractor';
+import { parseVoiceTranscript, hasContent, type NLPParseResult } from './utils/nlpVoiceParser';
+import VoiceConfirmationCard from './components/VoiceConfirmationCard';
 import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType, SupplementSchedule } from './types';
 
 // ─── Fuzzy condition / symptom matching ──────────────────────────────────────
@@ -95,6 +97,9 @@ function AppContent() {
   const [toastLabel, setToastLabel] = useState('');
   const [inlineToast, setInlineToast] = useState<string | null>(null);
   const inlineToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // NLP free-form voice parsing state
+  const [nlpResult, setNlpResult] = useState<NLPParseResult | null>(null);
+  const [nlpLoading, setNlpLoading] = useState(false);
   // When a full inline voice command matches (e.g. "log dizziness to migraine"),
   // open TrackingModal directly — bypassing the condition picker.
   const [voiceTrackTarget, setVoiceTrackTarget] =
@@ -371,6 +376,36 @@ function AppContent() {
         setNoteComposerAutoStart(true);
         setShowNoteComposer(true);
         break;
+      case 'FREE_FORM': {
+        // NLP parsing — send raw transcript to Claude for structured extraction
+        const conditions = getPatientConditions(state.activePatientId ?? '');
+        const medSchedules = (state.medicationSchedules ?? []).filter(
+          s => s.patientId === state.activePatientId && s.status === 'active'
+        );
+        const suppSchedules = (state.supplementSchedules ?? []).filter(
+          s => s.patientId === state.activePatientId && s.status === 'active'
+        );
+        setNlpLoading(true);
+        setToastLabel('Parsing voice input...');
+        parseVoiceTranscript(label, { conditions, medicationSchedules: medSchedules, supplementSchedules: suppSchedules })
+          .then(parsed => {
+            setNlpLoading(false);
+            if (hasContent(parsed)) {
+              setNlpResult(parsed);
+            } else {
+              setInlineToast('Couldn\'t extract anything — try being more specific');
+              if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+              inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+            }
+          })
+          .catch(() => {
+            setNlpLoading(false);
+            setInlineToast('Voice parse failed — try again');
+            if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+            inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+          });
+        break;
+      }
       case 'CANCEL':
         break;
     }
@@ -399,6 +434,80 @@ function AppContent() {
       loadSupplementDatabase(state.activePatientId);
     }
   }, [isAuthenticated, state.activePatientId, loadSupplementDatabase]);
+
+  // ── NLP voice confirmation handler ──────────────────────────────────────────
+  const handleNlpConfirm = useCallback((result: NLPParseResult) => {
+    const now = new Date();
+    const nowDate = now.toISOString().slice(0, 10);
+    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const conditions = getPatientConditions(state.activePatientId ?? '');
+
+    // Log symptoms
+    for (const s of result.symptoms) {
+      const condition = s.conditionHint
+        ? fuzzyMatch(conditions, s.conditionHint)
+        : conditions.length === 1 ? conditions[0] : null;
+      if (condition) {
+        const symptom = fuzzyMatch(condition.symptoms, s.symptomName);
+        addEntry({
+          conditionId:      condition.id,
+          conditionName:    condition.name,
+          symptomId:        symptom?.id ?? `${condition.id}-voice`,
+          symptomName:      symptom?.name ?? s.symptomName,
+          date:             nowDate,
+          time:             nowTime,
+          severity:         s.severity,
+          notes:            s.notes ?? 'Voice logged (NLP)',
+          reviewStatus:     'to_review',
+          sourceType:       'voice',
+          sourceTranscript: result.transcript,
+        });
+      }
+    }
+
+    // Log medications
+    const activeMeds = (state.medicationSchedules ?? []).filter(
+      m => m.patientId === state.activePatientId && m.status === 'active'
+    );
+    for (const m of result.medications) {
+      const matched = fuzzyMatchSchedule(activeMeds, m.name);
+      addMedicationLog({
+        name:          matched?.name ?? m.name,
+        type:          'medication',
+        dosage:        m.dosage ?? matched?.dosage,
+        route:         m.route ?? matched?.route,
+        date:          nowDate,
+        time:          nowTime,
+        conditionId:   matched?.conditionId,
+        conditionName: matched?.conditionName,
+        effectiveness: 'moderate',
+        notes:         'Voice logged (NLP)',
+      });
+    }
+
+    // Log supplements
+    const activeSupps = (state.supplementSchedules ?? []).filter(
+      s => s.patientId === state.activePatientId && s.status === 'active'
+    );
+    for (const s of result.supplements) {
+      const matched = fuzzyMatchSchedule(activeSupps, s.name);
+      addSupplementLog({
+        name:   matched?.name ?? s.name,
+        dosage: s.dosage ?? matched?.dosage,
+        form:   matched?.form,
+        date:   nowDate,
+        time:   nowTime,
+        notes:  'Voice logged (NLP)',
+        sourceTranscript: result.transcript,
+      });
+    }
+
+    const count = result.symptoms.length + result.medications.length + result.supplements.length;
+    setInlineToast(`Saved ${count} item${count !== 1 ? 's' : ''} from voice`);
+    if (inlineToastTimerRef.current) clearTimeout(inlineToastTimerRef.current);
+    inlineToastTimerRef.current = setTimeout(() => setInlineToast(null), 3000);
+    setNlpResult(null);
+  }, [state.activePatientId, state.medicationSchedules, state.supplementSchedules, getPatientConditions, addEntry, addMedicationLog, addSupplementLog]);
 
   // ── Note extraction handlers ────────────────────────────────────────────────
   const runExtraction = useCallback((noteId: string, noteText: string, date?: Date) => {
@@ -442,10 +551,10 @@ function AppContent() {
     );
   }
 
-  // Mandatory login gate — no app access without an account.
-  if (!isAuthenticated) {
-    return <AuthModal onClose={() => {}} required />;
-  }
+  // Mandatory login gate — FROZEN (re-enable by uncommenting)
+  // if (!isAuthenticated) {
+  //   return <AuthModal onClose={() => {}} required />;
+  // }
 
   return (
     <div className={`min-h-screen flex flex-col ${state.view === 'dashboard' ? 'bg-[#1a1f3c]' : 'bg-slate-50'}`}>
@@ -605,6 +714,16 @@ function AppContent() {
           onConfirm={handleConfirmExtraction}
           onSkip={handleSkipExtraction}
           onClose={() => setExtractionPending(null)}
+        />
+      )}
+
+      {/* NLP voice confirmation card */}
+      {nlpResult && (
+        <VoiceConfirmationCard
+          result={nlpResult}
+          onConfirm={handleNlpConfirm}
+          onDismiss={() => setNlpResult(null)}
+          loading={nlpLoading}
         />
       )}
 

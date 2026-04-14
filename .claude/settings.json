@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "deny": [
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_Preview__preview_stop",
+      "mcp__Claude_Preview__preview_screenshot",
+      "mcp__Claude_Preview__preview_snapshot",
+      "mcp__Claude_Preview__preview_logs",
+      "mcp__Claude_Preview__preview_console_logs",
+      "mcp__Claude_Preview__preview_network",
+      "mcp__Claude_Preview__preview_eval",
+      "mcp__Claude_Preview__preview_click",
+      "mcp__Claude_Preview__preview_fill",
+      "mcp__Claude_Preview__preview_inspect",
+      "mcp__Claude_Preview__preview_resize",
+      "mcp__Claude_Preview__preview_list"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"Stop\",\"additionalContext\":\"symptom-tracker is in a Dropbox CloudStorage path. macOS sandbox permanently blocks preview_start — getcwd fails at shell init before node loads. This is an OS-level restriction, not fixable via config. Verification for this project: tsc --noEmit (zero errors) + netlify deploy --prod (live at https://symtrack.netlify.app). Do NOT call preview_start for this project — it will always fail.\"},\"continue\":true}'"
+          }
+        ]
+      }
+    ]
+  }
+}

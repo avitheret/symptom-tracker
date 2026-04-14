@@ -31,6 +31,7 @@ export type VoiceCommand =
   | 'OPEN_NOTES'
   | 'OPEN_SUPPLEMENTS'
   | 'ADD_NOTE'
+  | 'FREE_FORM'
   | 'CANCEL';
 
 export interface CommandMatch {
@@ -865,6 +866,9 @@ export function useVoiceCommands({ onCommand, supplementDatabase }: UseVoiceComm
             if (medTakenPrefill) {
               const label = `Marked ${medTakenPrefill.name} taken`;
               confirmCommand('MARK_MEDICATION_TAKEN', label, undefined, undefined, undefined, medTakenPrefill);
+            } else {
+              // ── FREE_FORM fallback: send raw transcript for NLP parsing ──
+              confirmCommand('FREE_FORM', newText);
             }
           }
         }

@@ -301,6 +301,110 @@ export function getWeatherAlerts(obs: WeatherObservation): WeatherAlert[] {
   return alerts;
 }
 
+// ── Pressure sensitivity analysis ────────────────────────────────────────────
+
+function shiftDate(date: string, days: number): string {
+  const d = new Date(date + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Threshold: ≥5 hPa fall in 6 h = significant drop */
+const PRESSURE_DROP_THRESHOLD = -5;
+
+export interface PressureSensitivity {
+  dropDays: number;              // days with ≥5 hPa drop in any 6h reading
+  stableDays: number;            // days with all 6h readings |Δ| < 2 hPa
+  sameDayDropSeverity:   number | null;   // avg symptom severity on drop days
+  sameDayStableSeverity: number | null;   // avg symptom severity on stable days
+  nextDayDropSeverity:   number | null;   // avg severity the day after a drop
+  nextDayStableSeverity: number | null;   // avg severity the day after stable
+  dropSymptomPct:   number;      // % of drop days that had symptoms
+  stableSymptomPct: number;      // % of stable days that had symptoms
+  enoughData: boolean;           // ≥3 drop days and ≥3 stable days recorded
+}
+
+/**
+ * Computes pressure-sensitivity correlation by comparing average symptom
+ * severity on pressure-drop days (≥5 hPa/6h) vs stable days (|Δ|<2 hPa/6h),
+ * both same-day and the following day.
+ *
+ * @param entries - symptom entries to correlate (caller should pre-filter by patient/date)
+ */
+export function computePressureSensitivity(
+  entries: ReadonlyArray<{ date: string; severity: number }>,
+): PressureSensitivity {
+  const observations = getStoredObservations();
+
+  // Group observations by date → track worst (most negative) and max |6h| change
+  const byDate: Record<string, { minChange6h: number; maxAbsChange6h: number }> = {};
+  for (const o of observations) {
+    const ch = o.derivedFlags.pressureChange6h;
+    const prev = byDate[o.date];
+    if (!prev) {
+      byDate[o.date] = { minChange6h: ch, maxAbsChange6h: Math.abs(ch) };
+    } else {
+      if (ch < prev.minChange6h)            prev.minChange6h = ch;
+      if (Math.abs(ch) > prev.maxAbsChange6h) prev.maxAbsChange6h = Math.abs(ch);
+    }
+  }
+
+  // Classify dates
+  const dropDates   = new Set<string>();
+  const stableDates = new Set<string>();
+  for (const [date, d] of Object.entries(byDate)) {
+    if (d.minChange6h <= PRESSURE_DROP_THRESHOLD) {
+      dropDates.add(date);
+    } else if (d.maxAbsChange6h < 2) {
+      stableDates.add(date);
+    }
+  }
+
+  // Average severity per calendar date
+  const buckets: Record<string, number[]> = {};
+  for (const e of entries) {
+    (buckets[e.date] ??= []).push(e.severity);
+  }
+  const avgSevByDate: Record<string, number> = {};
+  for (const [date, sevs] of Object.entries(buckets)) {
+    avgSevByDate[date] = sevs.reduce((s, v) => s + v, 0) / sevs.length;
+  }
+
+  function computeAvg(
+    dates: Set<string>,
+    offset: number,
+  ): { avg: number | null; withSymptoms: number } {
+    const sevs: number[] = [];
+    let withSymptoms = 0;
+    for (const date of dates) {
+      const target = offset === 0 ? date : shiftDate(date, offset);
+      const sev = avgSevByDate[target];
+      if (sev !== undefined) { sevs.push(sev); withSymptoms++; }
+    }
+    const avg = sevs.length > 0
+      ? Math.round((sevs.reduce((s, v) => s + v, 0) / sevs.length) * 10) / 10
+      : null;
+    return { avg, withSymptoms };
+  }
+
+  const sameDayDrop   = computeAvg(dropDates,   0);
+  const sameDayStable = computeAvg(stableDates,  0);
+  const nextDayDrop   = computeAvg(dropDates,    1);
+  const nextDayStable = computeAvg(stableDates,  1);
+
+  return {
+    dropDays:  dropDates.size,
+    stableDays: stableDates.size,
+    sameDayDropSeverity:    sameDayDrop.avg,
+    sameDayStableSeverity:  sameDayStable.avg,
+    nextDayDropSeverity:    nextDayDrop.avg,
+    nextDayStableSeverity:  nextDayStable.avg,
+    dropSymptomPct:   dropDates.size   > 0 ? Math.round((sameDayDrop.withSymptoms   / dropDates.size)   * 100) : 0,
+    stableSymptomPct: stableDates.size > 0 ? Math.round((sameDayStable.withSymptoms / stableDates.size) * 100) : 0,
+    enoughData: dropDates.size >= 3 && stableDates.size >= 3,
+  };
+}
+
 // ── Convenience helpers ───────────────────────────────────────────────────────
 
 /** Returns the most recent observation if it's < 2 hours old, else null */

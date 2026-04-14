@@ -12,74 +12,95 @@ interface Props {
 }
 
 export default function DashboardCustomizer({ visible, onChange, onClose }: Props) {
-  // `order` is the full ordered list (visible + hidden). Drag reorders this.
   const [order, setOrder] = useState<WidgetId[]>(() => {
     const hidden = WIDGET_ORDER.filter(id => !visible.includes(id));
     return [...visible, ...hidden];
   });
 
-  // Drag state
-  const dragIndex = useRef<number | null>(null);
-  const dragTarget = useRef<number | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
 
+  const dragIndex = useRef<number | null>(null);
+  const dragTarget = useRef<number | null>(null);
+  const orderRef = useRef(order);
+  const visibleRef = useRef(visible);
+  const listRef = useRef<HTMLDivElement>(null);
+  orderRef.current = order;
+  visibleRef.current = visible;
+
   function commit(newOrder: WidgetId[]) {
     setOrder(newOrder);
-    onChange(newOrder.filter(w => visible.includes(w)));
+    onChange(newOrder.filter(w => visibleRef.current.includes(w)));
   }
 
   function toggleWidget(id: WidgetId) {
-    if (visible.includes(id)) {
-      if (visible.length <= 1) return;
-      onChange(order.filter(w => visible.includes(w) && w !== id));
+    const cur = visibleRef.current;
+    if (cur.includes(id)) {
+      if (cur.length <= 1) return;
+      onChange(orderRef.current.filter(w => cur.includes(w) && w !== id));
     } else {
-      onChange(order.filter(w => visible.includes(w) || w === id));
+      onChange(orderRef.current.filter(w => cur.includes(w) || w === id));
     }
   }
 
   function resetDefaults() {
-    const newOrder = [...WIDGET_ORDER];
-    setOrder(newOrder);
+    setOrder([...WIDGET_ORDER]);
     onChange([...DEFAULT_WIDGETS]);
   }
 
-  // ── Drag handlers ─────────────────────────────────────────────────────────
-  function onDragStart(e: React.DragEvent, index: number) {
-    dragIndex.current = index;
-    setDragging(index);
-    e.dataTransfer.effectAllowed = 'move';
-    // Transparent drag ghost
-    const ghost = document.createElement('div');
-    ghost.style.position = 'fixed';
-    ghost.style.top = '-999px';
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 0, 0);
-    setTimeout(() => document.body.removeChild(ghost), 0);
-  }
-
-  function onDragEnter(index: number) {
-    if (dragIndex.current === index) return;
-    dragTarget.current = index;
-    setDragOver(index);
-  }
-
-  function onDragEnd() {
-    if (dragIndex.current !== null && dragTarget.current !== null && dragIndex.current !== dragTarget.current) {
-      const newOrder = [...order];
-      const [moved] = newOrder.splice(dragIndex.current, 1);
-      newOrder.splice(dragTarget.current, 0, moved);
-      commit(newOrder);
+  function getIndexFromY(clientY: number): number {
+    const items = listRef.current?.querySelectorAll<HTMLElement>('[data-drag-index]');
+    if (!items || items.length === 0) return 0;
+    for (const el of items) {
+      const rect = el.getBoundingClientRect();
+      if (clientY >= rect.top && clientY <= rect.bottom) return Number(el.dataset.dragIndex);
     }
+    const first = items[0].getBoundingClientRect();
+    return clientY < first.top ? 0 : orderRef.current.length - 1;
+  }
+
+  // ── Pointer events (mouse + touch, no draggable conflicts) ────────────────
+  function onGripPointerDown(e: React.PointerEvent, index: number) {
+    e.preventDefault();
+    // Capture pointer on the list so pointermove/up fire there regardless of position
+    listRef.current?.setPointerCapture(e.pointerId);
+    dragIndex.current = index;
+    dragTarget.current = null;
+    setDragging(index);
+    setDragOver(null);
+  }
+
+  function onListPointerMove(e: React.PointerEvent) {
+    if (dragIndex.current === null) return;
+    const idx = getIndexFromY(e.clientY);
+    if (idx !== dragIndex.current) {
+      dragTarget.current = idx;
+      setDragOver(idx);
+    }
+  }
+
+  function onListPointerUp(e: React.PointerEvent) {
+    if (dragIndex.current === null) return;
+    listRef.current?.releasePointerCapture(e.pointerId);
+    const from = dragIndex.current;
+    const to = dragTarget.current;
     dragIndex.current = null;
     dragTarget.current = null;
     setDragging(null);
     setDragOver(null);
+    if (from !== null && to !== null && from !== to) {
+      const newOrder = [...orderRef.current];
+      const [moved] = newOrder.splice(from, 1);
+      newOrder.splice(to, 0, moved);
+      commit(newOrder);
+    }
   }
 
-  function onDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+  function onListPointerCancel() {
+    dragIndex.current = null;
+    dragTarget.current = null;
+    setDragging(null);
+    setDragOver(null);
   }
 
   return (
@@ -111,22 +132,24 @@ export default function DashboardCustomizer({ visible, onChange, onClose }: Prop
         </div>
 
         {/* List */}
-        <div className="px-6 py-5 space-y-2 overflow-y-auto flex-1">
+        <div
+          ref={listRef}
+          className="px-6 py-5 space-y-2 overflow-y-auto flex-1"
+          onPointerMove={onListPointerMove}
+          onPointerUp={onListPointerUp}
+          onPointerCancel={onListPointerCancel}
+        >
           {order.map((id, index) => {
             const def = WIDGET_DEFS[id];
-            const isOn = visible.includes(id);
+            const isOn = visibleRef.current.includes(id);
             const isDragging = dragging === index;
             const isTarget = dragOver === index && dragging !== index;
 
             return (
               <div
                 key={id}
-                draggable
-                onDragStart={e => onDragStart(e, index)}
-                onDragEnter={() => onDragEnter(index)}
-                onDragOver={onDragOver}
-                onDragEnd={onDragEnd}
-                className={`flex items-center gap-3 p-3 rounded-xl border transition-all
+                data-drag-index={index}
+                className={`flex items-center gap-3 p-3 rounded-xl border transition-all select-none
                   ${isDragging
                     ? 'opacity-40 border-blue-300 bg-blue-50 scale-[0.98]'
                     : isTarget
@@ -134,15 +157,15 @@ export default function DashboardCustomizer({ visible, onChange, onClose }: Prop
                     : 'border-slate-100 hover:bg-slate-50'
                   }`}
               >
-                {/* Drag handle */}
+                {/* Grip handle — pointer down here starts drag */}
                 <div
                   className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing touch-none flex-shrink-0 min-h-[44px] flex items-center"
-                  onMouseDown={e => e.stopPropagation()}
+                  onPointerDown={e => onGripPointerDown(e, index)}
                 >
                   <GripVertical size={18} />
                 </div>
 
-                {/* Label — clicking toggles */}
+                {/* Label — tap toggles */}
                 <div
                   className="flex-1 min-w-0 cursor-pointer"
                   onClick={() => toggleWidget(id)}
