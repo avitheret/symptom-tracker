@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { Sparkles, AlertTriangle, AlertCircle, Info, Lightbulb, Activity, Pill, X, Loader2, FileText } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Sparkles, AlertTriangle, AlertCircle, Info, Lightbulb, Activity, Pill, X, Loader2, FileText, Zap, CheckCircle2, Shield } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { generateInsights } from '../utils/claudeInsights';
-import { Button, SectionHeader } from './ui';
+import { generateInsights, getCachedInsights } from '../utils/claudeInsights';
+import { Button, Badge, SectionHeader } from './ui';
 
 
 const SEVERITY_STYLES: Record<string, { border: string; bg: string; icon: string; Icon: typeof AlertTriangle }> = {
@@ -16,6 +16,12 @@ const CATEGORY_ICON: Record<string, typeof Lightbulb> = {
   tip: Lightbulb,
   pattern: Activity,
   medication: Pill,
+};
+
+const CONFIDENCE_BADGE: Record<string, { variant: 'success' | 'warning' | 'default'; label: string }> = {
+  high:   { variant: 'success', label: 'High confidence' },
+  medium: { variant: 'warning', label: 'Medium' },
+  low:    { variant: 'default', label: 'Low' },
 };
 
 function timeAgo(ts: number): string {
@@ -45,6 +51,24 @@ export default function AIInsightsCard() {
 
   const hasDiagnosis = !!patient?.diagnosis;
 
+  // Provenance from first insight (all share same counts)
+  const provenance = patientInsights[0];
+
+  // Load cached insights on mount
+  useEffect(() => {
+    if (!patient || patientInsights.length > 0) return;
+    const patientEntries = state.entries.filter(
+      e => e.patientId === patient.id &&
+      e.reviewStatus !== 'to_review' &&
+      e.reviewStatus !== 'disapproved'
+    );
+    const patientMeds = state.medicationLogs.filter(m => m.patientId === patient.id);
+    const patientSupps = (state.supplementLogs ?? []).filter(s => s.patientId === patient.id);
+    const cached = getCachedInsights(patient.id, patientEntries, patientMeds, patientSupps);
+    if (cached) setAIInsights(cached);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient?.id]);
+
   async function handleGenerate() {
     if (!patient) return;
 
@@ -59,13 +83,16 @@ export default function AIInsightsCard() {
       );
       const patientCheckIns = state.checkIns.filter(c => c.patientId === patient.id);
       const patientMeds = state.medicationLogs.filter(m => m.patientId === patient.id);
+      const patientSupps = (state.supplementLogs ?? []).filter(s => s.patientId === patient.id);
 
       const insights = await generateInsights({
+        patientId: patient.id,
         patientName: patient.name,
         diagnosis: patient.diagnosis ?? 'Not specified',
         entries: patientEntries,
         checkIns: patientCheckIns,
         medications: patientMeds,
+        supplementLogs: patientSupps,
         conditions: patientConditions,
       });
 
@@ -87,7 +114,7 @@ export default function AIInsightsCard() {
           <div className="p-1.5 bg-violet-200 rounded-lg">
             <Sparkles size={13} className="text-violet-700" />
           </div>
-          <span className="text-xs font-semibold text-violet-700">AI-Powered</span>
+          <span className="text-xs font-semibold text-violet-700">Multi-Factor Analysis</span>
           {latestTimestamp > 0 && (
             <span className="ml-auto text-xs text-slate-400">{timeAgo(latestTimestamp)}</span>
           )}
@@ -109,10 +136,20 @@ export default function AIInsightsCard() {
             </div>
           )}
 
+          {/* Provenance label */}
+          {provenance?.entryCount != null && provenance?.daySpan != null && (
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+              <Shield size={10} />
+              <span>Based on {provenance.entryCount} entries over {provenance.daySpan} days</span>
+            </div>
+          )}
+
           {/* Insights list */}
           {patientInsights.map(insight => {
             const style = SEVERITY_STYLES[insight.severity] ?? SEVERITY_STYLES.info;
             const CatIcon = CATEGORY_ICON[insight.category] ?? Lightbulb;
+            const conf = insight.confidence ? CONFIDENCE_BADGE[insight.confidence] : null;
+
             return (
               <div
                 key={insight.id}
@@ -124,9 +161,39 @@ export default function AIInsightsCard() {
                 >
                   <X size={13} />
                 </button>
+
+                {/* Content */}
                 <div className="flex gap-2.5 pr-6">
                   <CatIcon size={15} className={`flex-shrink-0 mt-0.5 ${style.icon}`} />
-                  <p className="text-sm text-slate-800 leading-relaxed">{insight.content}</p>
+                  <div className="space-y-2 min-w-0">
+                    <p className="text-sm text-slate-800 leading-relaxed">{insight.content}</p>
+
+                    {/* Factor chips */}
+                    {insight.factors && insight.factors.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {insight.factors.map((f, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/80 border border-slate-200 text-[10px] font-medium text-slate-600">
+                            <Zap size={8} className="text-amber-500" />{f}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Actionable suggestion */}
+                    {insight.actionable && (
+                      <div className="flex items-start gap-1.5 bg-white/70 rounded-lg px-2.5 py-1.5">
+                        <CheckCircle2 size={11} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-[11px] text-slate-600 leading-relaxed">{insight.actionable}</p>
+                      </div>
+                    )}
+
+                    {/* Confidence badge */}
+                    {conf && (
+                      <Badge variant={conf.variant} className="text-[9px]">
+                        {conf.label}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
             );

@@ -449,4 +449,10 @@ export interface AIInsight {
   severity: InsightSeverity;
   generatedAt: number;
   dismissed?: boolean;
+  // Multi-factor correlation fields (v3.12.0+)
+  factors?: string[];          // e.g. ["pressure drop", "poor sleep", "high stress"]
+  confidence?: 'high' | 'medium' | 'low';
+  actionable?: string;         // one suggested change
+  entryCount?: number;         // provenance: how many entries analysed
+  daySpan?: number;            // provenance: how many days covered
 }
