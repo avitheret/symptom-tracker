@@ -17,7 +17,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.13.0';
+const APP_VERSION = 'v3.14.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -536,6 +536,28 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
               <p className="text-xs text-white/40 mt-0.5 font-medium">{label}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── First-run welcome — shown until the user adds a condition ── */}
+      {conditions.length === 0 && patientEntries.length === 0 && (
+        <div className="bg-white/10 border border-white/15 rounded-2xl p-5 flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-violet-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Heart size={18} className="text-violet-300" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-semibold text-sm">Welcome to SymptomTrack</p>
+            <p className="text-white/50 text-xs mt-1 leading-relaxed">
+              Start by adding a condition — then log symptoms, medications, and check-ins to build your health picture.
+            </p>
+            <button
+              onClick={() => setShowAddCondition(true)}
+              className="mt-3 inline-flex items-center gap-1.5 bg-violet-500 hover:bg-violet-600 active:scale-[0.97] text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all min-h-[36px]"
+            >
+              <Plus size={13} />
+              Add Your First Condition
+            </button>
+          </div>
         </div>
       )}
 

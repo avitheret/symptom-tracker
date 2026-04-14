@@ -8,7 +8,7 @@ import { useApp } from '../contexts/AppContext';
 import type { SupplementLog, SupplementSchedule } from '../types';
 import SupplementScheduleList from './SupplementScheduleList';
 import SupplementDatabase from './SupplementDatabase';
-import { TabBar } from './ui';
+import { TabBar, EmptyState } from './ui';
 import type { TabItem } from './ui';
 
 // ── Tab definitions ──────────────────────────────────────────────────────────
@@ -128,23 +128,14 @@ function LogTab({ onOpenSupplementModal }: { onOpenSupplementModal?: () => void 
 
   if (logs.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-10 text-center space-y-3">
-        <div className="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto">
-          <FlaskConical size={24} className="text-teal-400" />
-        </div>
-        <p className="text-sm font-semibold text-slate-700">No supplements logged yet</p>
-        <p className="text-xs text-slate-400 max-w-[260px] mx-auto leading-relaxed">
-          Say "Hey Tracker, log vitamin D" or use the button below to record a supplement.
-        </p>
-        {onOpenSupplementModal && (
-          <button
-            onClick={onOpenSupplementModal}
-            className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors mt-2"
-          >
-            <Plus size={15} />
-            Log Supplement
-          </button>
-        )}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
+        <EmptyState
+          icon={<FlaskConical size={22} />}
+          title="No supplements logged yet"
+          description='Say "Hey Tracker, log vitamin D" or tap the button to record a supplement.'
+          action={onOpenSupplementModal ? { label: 'Log Supplement', onClick: onOpenSupplementModal, icon: <Plus size={15} /> } : undefined}
+          compact
+        />
       </div>
     );
   }

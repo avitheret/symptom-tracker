@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Trash2, Download, Pill, Stethoscope, TrendingUp, ChevronDown } from 'lucide-react';
+import { Trash2, Download, Pill, Stethoscope, TrendingUp, ChevronDown, Plus } from 'lucide-react';
+import { EmptyState } from './ui';
 import { useApp } from '../contexts/AppContext';
 import { EFFECTIVENESS_LABELS } from '../types';
 import type { EffectivenessRating, MedicationLog, MedicationSchedule } from '../types';
@@ -159,22 +160,20 @@ export default function MedicationTab({ onOpenMedSchedule, onEditMedSchedule }: 
   if (logs.length === 0) {
     return (
       <div className="space-y-4">
-        {/* Medication Schedule section */}
         {onOpenMedSchedule && (
           <MedScheduleList
             onAdd={onOpenMedSchedule}
             onEdit={s => onEditMedSchedule?.(s)}
           />
         )}
-
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-10 text-center space-y-3">
-          <div className="w-14 h-14 bg-violet-50 rounded-2xl flex items-center justify-center mx-auto">
-            <Pill size={24} className="text-violet-400" />
-          </div>
-          <p className="text-sm font-semibold text-slate-700">No medications logged yet</p>
-          <p className="text-xs text-slate-400 max-w-[260px] mx-auto leading-relaxed">
-            Use the Meds button in the header to log your medications and treatments after each use.
-          </p>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
+          <EmptyState
+            icon={<Pill size={22} />}
+            title="No medications logged yet"
+            description='Say "Hey Tracker, log medication" or tap the button to record a dose.'
+            action={onOpenMedSchedule ? { label: 'Add Medication Schedule', onClick: onOpenMedSchedule, icon: <Plus size={15} /> } : undefined}
+            compact
+          />
         </div>
       </div>
     );

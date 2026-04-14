@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { BarChart2, Layers, Clock, Zap, FlaskConical } from 'lucide-react';
+import { BarChart2, Layers, Clock, Zap, FlaskConical, Activity } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { gatherAllPatterns, detectClusters } from '../utils/analytics';
 import InsightPatterns from './InsightPatterns';
@@ -7,7 +7,7 @@ import InsightClusters from './InsightClusters';
 import InsightTriggers from './InsightTriggers';
 import HealthTimeline from './HealthTimeline';
 import ContributingFactors from './ContributingFactors';
-import { TabBar } from './ui';
+import { TabBar, EmptyState } from './ui';
 import type { TabItem } from './ui';
 
 type InsightTab = 'patterns' | 'clusters' | 'timeline' | 'triggers' | 'factors';
@@ -42,6 +42,24 @@ export default function Insights() {
     () => (state.supplementLogs ?? []).filter(l => l.patientId === state.activePatientId).length,
     [state.supplementLogs, state.activePatientId],
   );
+
+  if (patientEntries.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Insights</h1>
+          <p className="text-sm text-slate-400 mt-0.5">Patterns and trends from your symptom data</p>
+        </div>
+        <div className="mt-6 bg-white rounded-2xl border border-slate-100 shadow-sm">
+          <EmptyState
+            icon={<Activity size={22} />}
+            title="No data to analyse yet"
+            description="Log a few symptoms to unlock patterns, clusters, and health trends."
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
