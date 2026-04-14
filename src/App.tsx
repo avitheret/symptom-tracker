@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { CloudRain } from 'lucide-react';
 import { fuzzyMatchSupplementName } from './utils/supplementMatcher';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -44,6 +45,7 @@ import { useCloudStateSync } from './hooks/useCloudStateSync';
 import { extractFromNote } from './utils/noteExtractor';
 import { parseVoiceTranscript, hasContent, type NLPParseResult } from './utils/nlpVoiceParser';
 import VoiceConfirmationCard from './components/VoiceConfirmationCard';
+import BadDaySheet from './components/BadDaySheet';
 import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType, SupplementSchedule } from './types';
 
 // ─── Fuzzy condition / symptom matching ──────────────────────────────────────
@@ -100,6 +102,7 @@ function AppContent() {
   // NLP free-form voice parsing state
   const [nlpResult, setNlpResult] = useState<NLPParseResult | null>(null);
   const [nlpLoading, setNlpLoading] = useState(false);
+  const [showBadDay, setShowBadDay] = useState(false);
   // When a full inline voice command matches (e.g. "log dizziness to migraine"),
   // open TrackingModal directly — bypassing the condition picker.
   const [voiceTrackTarget, setVoiceTrackTarget] =
@@ -643,6 +646,19 @@ function AppContent() {
         onNote={() => { setNoteComposerAutoStart(false); setShowNoteComposer(true); }}
       />
 
+      {/* Bad Day FAB — visible on dashboard + log screens */}
+      {['dashboard', 'conditions', 'meds', 'supplements', 'notes'].includes(state.view) && (
+        <button
+          onClick={() => setShowBadDay(true)}
+          aria-label="Log a bad day"
+          title="Log a bad day"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 72px)' }}
+          className="lg:hidden fixed left-4 z-40 w-12 h-12 rounded-full bg-rose-500 hover:bg-rose-600 active:scale-90 text-white shadow-lg flex items-center justify-center transition-all"
+        >
+          <CloudRain size={20} />
+        </button>
+      )}
+
       {/* Mobile bottom navigation */}
       <BottomNav />
 
@@ -715,6 +731,11 @@ function AppContent() {
           onSkip={handleSkipExtraction}
           onClose={() => setExtractionPending(null)}
         />
+      )}
+
+      {/* Bad Day quick-log sheet */}
+      {showBadDay && (
+        <BadDaySheet onClose={() => setShowBadDay(false)} />
       )}
 
       {/* NLP voice confirmation card */}
