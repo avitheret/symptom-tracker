@@ -17,7 +17,7 @@ import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.17.1';
+const APP_VERSION = 'v3.17.2';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -354,19 +354,26 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
           const d = new Date();
           d.setDate(d.getDate() - 3 + i);
           const dateStr = d.toISOString().slice(0, 10);
+          const today = new Date().toISOString().slice(0, 10);
+          const isFuture = dateStr > today;
           const isSelected = dateStr === selectedDate;
           const dayLabel = d.toLocaleDateString('en-GB', { weekday: 'short' });
           const dayNum = d.getDate();
           return (
             <button
               key={i}
-              onClick={() => setSelectedDate(dateStr)}
-              className={`flex flex-col items-center gap-1 flex-shrink-0 w-11 py-2 rounded-2xl transition-all active:scale-95 ${
-                isSelected ? 'bg-violet-500 text-white' : 'text-white/40 hover:bg-white/10'
+              onClick={() => !isFuture && setSelectedDate(dateStr)}
+              disabled={isFuture}
+              className={`flex flex-col items-center gap-1 flex-shrink-0 w-11 py-2 rounded-2xl transition-all ${
+                isFuture
+                  ? 'text-white/20 cursor-not-allowed'
+                  : isSelected
+                    ? 'bg-violet-500 text-white active:scale-95'
+                    : 'text-white/40 hover:bg-white/10 active:scale-95'
               }`}
             >
               <span className="text-[11px] font-medium">{dayLabel}</span>
-              <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-white/60'}`}>{dayNum}</span>
+              <span className={`text-sm font-bold ${isSelected ? 'text-white' : isFuture ? 'text-white/20' : 'text-white/60'}`}>{dayNum}</span>
             </button>
           );
         })}
