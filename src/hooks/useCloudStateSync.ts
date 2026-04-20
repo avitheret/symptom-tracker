@@ -20,7 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase, CLOUD_ENABLED } from '../lib/supabase';
 
 const TABLE = 'user_app_state';
-const DEBOUNCE_MS = 4000;
+const DEBOUNCE_MS = 1000;
 
 /** localStorage key that stores the Supabase updated_at of the last sync. */
 const SYNCED_AT_KEY = 'st-cloud-synced-at';
@@ -116,9 +116,16 @@ export function useCloudStateSync() {
     }
   }
 
-  // ── On login: always pull (forceReplace=true) ──────────────────────────────
+  // ── On login / auth restore: pull using timestamp comparison ────────────────
+  // forceReplace=false: only apply cloud data if cloudAt > localAt.
+  // This is safe for all cases:
+  //   • New device / first login: localAt=0, any cloud timestamp wins ✓
+  //   • Multi-device: cloud is newer → wins ✓
+  //   • Save then refresh before push fires: cloud is same age → local wins ✓
+  // forceReplace=true was the previous approach but caused locally-saved changes
+  // to be wiped on refresh when the 4s push debounce hadn't completed yet.
   useEffect(() => {
-    if (user?.id) pullFromCloud(user.id, true);
+    if (user?.id) pullFromCloud(user.id, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
