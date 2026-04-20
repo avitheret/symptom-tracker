@@ -44,6 +44,7 @@ interface CachedInsights {
   insights: AIInsight[];
   generatedAt: number;
   entryHash: string;   // quick change-detection fingerprint
+  diagnosis: string;   // stored so cache is invalidated when diagnosis changes
 }
 
 function computeEntryHash(entries: TrackingEntry[], meds: MedicationLog[], supps: SupplementLog[]): string {
@@ -56,14 +57,22 @@ function computeEntryHash(entries: TrackingEntry[], meds: MedicationLog[], supps
   return `${counts}-${latest}`;
 }
 
-export function getCachedInsights(patientId: string, entries: TrackingEntry[], meds: MedicationLog[], supps: SupplementLog[]): AIInsight[] | null {
+export function getCachedInsights(
+  patientId: string,
+  entries: TrackingEntry[],
+  meds: MedicationLog[],
+  supps: SupplementLog[],
+  diagnosis?: string,
+): AIInsight[] | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const cached: CachedInsights = JSON.parse(raw);
     if (cached.patientId !== patientId) return null;
-    // Invalidate if data changed
+    // Invalidate if symptom/med/supplement data changed
     if (cached.entryHash !== computeEntryHash(entries, meds, supps)) return null;
+    // Invalidate if medical background changed — ensures new diagnosis is always analysed
+    if ((cached.diagnosis ?? '') !== (diagnosis ?? '')) return null;
     // Invalidate after 24h
     if (Date.now() - cached.generatedAt > 24 * 60 * 60 * 1000) return null;
     return cached.insights;
@@ -72,12 +81,20 @@ export function getCachedInsights(patientId: string, entries: TrackingEntry[], m
   }
 }
 
-function cacheInsights(patientId: string, insights: AIInsight[], entries: TrackingEntry[], meds: MedicationLog[], supps: SupplementLog[]) {
+function cacheInsights(
+  patientId: string,
+  insights: AIInsight[],
+  entries: TrackingEntry[],
+  meds: MedicationLog[],
+  supps: SupplementLog[],
+  diagnosis: string,
+) {
   const payload: CachedInsights = {
     patientId,
     insights,
     generatedAt: Date.now(),
     entryHash: computeEntryHash(entries, meds, supps),
+    diagnosis,
   };
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
@@ -386,8 +403,8 @@ Respond ONLY with a valid JSON array, no other text.`;
     daySpan,
   }));
 
-  // Cache results
-  cacheInsights(patientId, insights, entries, medications, supplementLogs);
+  // Cache results (include diagnosis so cache is invalidated if it changes)
+  cacheInsights(patientId, insights, entries, medications, supplementLogs, diagnosis);
 
   return insights;
 }

@@ -160,15 +160,20 @@ export function useCloudStateSync() {
     if (!user?.id) return;
     const uid = user.id;
 
-    const handleFocus = () => pullFromCloud(uid, true);
+    // Use forceReplace=false: only apply cloud data if it's NEWER than the last
+    // local sync timestamp. This prevents the keyboard-dismiss / tab-focus cycle
+    // from overwriting locally-saved changes that haven't been pushed yet
+    // (the push debounce is 4 s — any focus event in that window would erase data).
+    // forceReplace=true is reserved for the initial login pull only.
+    const handleFocus = () => pullFromCloud(uid, false);
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') pullFromCloud(uid, true);
+      if (document.visibilityState === 'visible') pullFromCloud(uid, false);
     };
 
     const handlePageShow = (e: PageTransitionEvent) => {
       // e.persisted = true means restored from bfcache (common on iOS)
-      if (e.persisted || document.visibilityState === 'visible') pullFromCloud(uid, true);
+      if (e.persisted || document.visibilityState === 'visible') pullFromCloud(uid, false);
     };
 
     document.addEventListener('visibilitychange', handleVisibility);

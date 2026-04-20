@@ -81,7 +81,7 @@ export default function AIInsightsCard() {
     );
     const patientMeds = state.medicationLogs.filter(m => m.patientId === patient.id);
     const patientSupps = (state.supplementLogs ?? []).filter(s => s.patientId === patient.id);
-    const cached = getCachedInsights(patient.id, patientEntries, patientMeds, patientSupps);
+    const cached = getCachedInsights(patient.id, patientEntries, patientMeds, patientSupps, patient.diagnosis);
     if (cached) setAIInsights(cached);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient?.id]);
