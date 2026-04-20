@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Sparkles, AlertTriangle, AlertCircle, Info, Lightbulb, Activity, Pill, X, Loader2, FileText, Zap, CheckCircle2, Shield } from 'lucide-react';
+import { Sparkles, AlertTriangle, AlertCircle, Info, Lightbulb, Activity, Pill, X, Loader2, FileText, Zap, CheckCircle2, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { generateInsights, getCachedInsights } from '../utils/claudeInsights';
 import { Button, Badge, SectionHeader, Skeleton } from './ui';
@@ -56,6 +56,7 @@ export default function AIInsightsCard() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState(false);
 
   const patient = getActivePatient();
   const patientInsights = state.aiInsights.filter(
@@ -113,6 +114,7 @@ export default function AIInsightsCard() {
       });
 
       setAIInsights(insights);
+      setExpanded(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate insights');
     } finally {
@@ -169,60 +171,83 @@ export default function AIInsightsCard() {
             </>
           )}
 
-          {/* Insights list */}
-          {!loading && patientInsights.map(insight => {
-            const style = SEVERITY_STYLES[insight.severity] ?? SEVERITY_STYLES.info;
-            const CatIcon = CATEGORY_ICON[insight.category] ?? Lightbulb;
-            const conf = insight.confidence ? CONFIDENCE_BADGE[insight.confidence] : null;
+          {/* Insights list — collapsed: first only; expanded: all */}
+          {!loading && (() => {
+            const visible = expanded ? patientInsights : patientInsights.slice(0, 1);
+            const hiddenCount = patientInsights.length - 1;
 
             return (
-              <div
-                key={insight.id}
-                className={`relative rounded-xl border p-3 ${style.border} ${style.bg}`}
-              >
-                <button
-                  onClick={() => dismissAIInsight(insight.id)}
-                  className="absolute top-2 right-2 p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-white/60 transition-colors"
-                >
-                  <X size={13} />
-                </button>
+              <>
+                {visible.map(insight => {
+                  const style = SEVERITY_STYLES[insight.severity] ?? SEVERITY_STYLES.info;
+                  const CatIcon = CATEGORY_ICON[insight.category] ?? Lightbulb;
+                  const conf = insight.confidence ? CONFIDENCE_BADGE[insight.confidence] : null;
 
-                {/* Content */}
-                <div className="flex gap-2.5 pr-6">
-                  <CatIcon size={15} className={`flex-shrink-0 mt-0.5 ${style.icon}`} />
-                  <div className="space-y-2 min-w-0">
-                    <p className="text-sm text-slate-800 leading-relaxed">{insight.content}</p>
+                  return (
+                    <div
+                      key={insight.id}
+                      className={`relative rounded-xl border p-3 ${style.border} ${style.bg}`}
+                    >
+                      <button
+                        onClick={() => dismissAIInsight(insight.id)}
+                        className="absolute top-2 right-2 p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-white/60 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                      >
+                        <X size={13} />
+                      </button>
 
-                    {/* Factor chips */}
-                    {insight.factors && insight.factors.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {insight.factors.map((f, i) => (
-                          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/80 border border-slate-200 text-[10px] font-medium text-slate-600">
-                            <Zap size={8} className="text-amber-500" />{f}
-                          </span>
-                        ))}
+                      {/* Content */}
+                      <div className="flex gap-2.5 pr-6">
+                        <CatIcon size={15} className={`flex-shrink-0 mt-0.5 ${style.icon}`} />
+                        <div className="space-y-2 min-w-0">
+                          <p className="text-sm text-slate-800 leading-relaxed">{insight.content}</p>
+
+                          {/* Factor chips */}
+                          {insight.factors && insight.factors.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {insight.factors.map((f, i) => (
+                                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/80 border border-slate-200 text-[10px] font-medium text-slate-600">
+                                  <Zap size={8} className="text-amber-500" />{f}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Actionable suggestion */}
+                          {insight.actionable && (
+                            <div className="flex items-start gap-1.5 bg-white/70 rounded-lg px-2.5 py-1.5">
+                              <CheckCircle2 size={11} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                              <p className="text-[11px] text-slate-600 leading-relaxed">{insight.actionable}</p>
+                            </div>
+                          )}
+
+                          {/* Confidence badge */}
+                          {conf && (
+                            <Badge variant={conf.variant} className="text-[9px]">
+                              {conf.label}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    </div>
+                  );
+                })}
 
-                    {/* Actionable suggestion */}
-                    {insight.actionable && (
-                      <div className="flex items-start gap-1.5 bg-white/70 rounded-lg px-2.5 py-1.5">
-                        <CheckCircle2 size={11} className="text-emerald-500 flex-shrink-0 mt-0.5" />
-                        <p className="text-[11px] text-slate-600 leading-relaxed">{insight.actionable}</p>
-                      </div>
+                {/* Show More / Show Less toggle */}
+                {patientInsights.length > 1 && (
+                  <button
+                    onClick={() => setExpanded(e => !e)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded-xl transition-colors min-h-[44px]"
+                  >
+                    {expanded ? (
+                      <><ChevronUp size={13} /> Show less</>
+                    ) : (
+                      <><ChevronDown size={13} /> Show {hiddenCount} more insight{hiddenCount !== 1 ? 's' : ''}</>
                     )}
-
-                    {/* Confidence badge */}
-                    {conf && (
-                      <Badge variant={conf.variant} className="text-[9px]">
-                        {conf.label}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
+                  </button>
+                )}
+              </>
             );
-          })}
+          })()}
 
           {/* Error */}
           {error && (
