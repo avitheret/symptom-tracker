@@ -30,6 +30,7 @@ export type VoiceCommand =
   | 'OPEN_CONDITIONS'
   | 'OPEN_NOTES'
   | 'OPEN_SUPPLEMENTS'
+  | 'OPEN_MEDICATIONS'
   | 'ADD_NOTE'
   | 'FREE_FORM'
   | 'CANCEL';
@@ -126,22 +127,53 @@ function normalizeForWake(text: string): string {
 
 const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label: string }> = [
   {
-    patterns: ['add log', 'log symptom', 'new symptom', 'add symptom', 'log a symptom', 'record symptom'],
+    patterns: [
+      'add log', 'log symptom', 'new symptom', 'add symptom', 'log a symptom', 'record symptom',
+      'track symptom', 'report symptom', 'log my symptom', 'track my symptom',
+      'i have a symptom', 'i feel sick', 'i feel dizzy', 'i feel nauseous', 'i feel pain',
+      "i'm feeling sick", "i'm feeling unwell", 'feeling unwell', 'not feeling well',
+      'log flare', 'add flare', 'record flare', 'log my pain', 'log my headache',
+      'log migraine', 'log nausea', 'log fatigue', 'log dizziness',
+    ],
     command: 'LOG_SYMPTOM',
     label: 'Log Symptom',
   },
   {
-    patterns: ['check in', 'add check', 'daily check', 'checkin', 'check-in', 'daily check in'],
+    patterns: [
+      'check in', 'add check', 'daily check', 'checkin', 'check-in', 'daily check in',
+      'morning check', 'evening check', 'wellness check', 'quick check in', 'mood check',
+      'daily update', 'how am i feeling', 'daily wellness', 'how do i feel',
+    ],
     command: 'CHECK_IN',
     label: 'Daily Check-In',
   },
   {
-    patterns: ['log trigger', 'add trigger', 'new trigger', 'record trigger'],
+    patterns: [
+      'log trigger', 'add trigger', 'new trigger', 'record trigger',
+      'log a trigger', 'add a trigger', 'identify trigger', 'potential trigger',
+      'trigger factor',
+    ],
     command: 'LOG_TRIGGER',
     label: 'Log Trigger',
   },
+  // ── Navigation (OPEN_*) listed before LOG_MEDICATION to avoid "medication"
+  // substring matching "medications" page command ───────────────────────────
   {
-    patterns: ['log med', 'add med', 'medication', 'log pill', 'add pill', 'log meds', 'add meds', 'log treatment', 'add treatment'],
+    patterns: [
+      'open medications', 'go to medications', 'my medications', 'view medications',
+      'show medications', 'medications page', 'medication list', 'medication schedule',
+      'open meds page', 'go to meds', 'show meds', 'view meds', 'my meds',
+      'med list', 'med schedule', 'medications',
+    ],
+    command: 'OPEN_MEDICATIONS',
+    label: 'Open Medications',
+  },
+  {
+    patterns: [
+      'log med', 'add med', 'log medication', 'add medication', 'new medication',
+      'log pill', 'add pill', 'log meds', 'add meds', 'log treatment', 'add treatment',
+      'log medicine', 'add medicine', 'take medication', 'log new med',
+    ],
     command: 'LOG_MEDICATION',
     label: 'Log Medication',
   },
@@ -150,6 +182,7 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
       'mark taken', 'mark as taken', 'i took', 'just took',
       'mark supplement taken', 'taken my', 'took my',
       'i have taken', 'already took', 'have taken',
+      'just had my', 'finished my', 'already taken my',
     ],
     command: 'MARK_SUPPLEMENT_TAKEN',
     label: 'Mark Supplement Taken',
@@ -158,12 +191,23 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     patterns: [
       'mark medication taken', 'mark med taken', 'add medication taken',
       'add med taken', 'medication taken', 'add taken',
+      'took my medication', 'took my medicine',
     ],
     command: 'MARK_MEDICATION_TAKEN',
     label: 'Mark Medication Taken',
   },
   {
-    patterns: ['log supplement', 'log supplements', 'add supplement', 'add supplements', 'log vitamin', 'add vitamin', 'log mineral', 'add mineral', 'log probiotic', 'log probiotics', 'add probiotic', 'add probiotics', 'log omega', 'add omega', 'log magnesium', 'add magnesium', 'log zinc', 'add zinc', 'log vitamin d', 'log vitamin c', 'supplement', 'took my vitamins', 'took my vitamin', 'took my supplement', 'took my supplements', 'took supplements', 'took my', 'took a', 'log my pills', 'add my pills', 'morning supplements', 'breakfast supplements', 'lunch supplements', 'dinner supplements', 'bedtime supplements'],
+    patterns: [
+      'log supplement', 'log supplements', 'add supplement', 'add supplements',
+      'log vitamin', 'add vitamin', 'log mineral', 'add mineral',
+      'log probiotic', 'log probiotics', 'add probiotic', 'add probiotics',
+      'log omega', 'add omega', 'log magnesium', 'add magnesium',
+      'log zinc', 'add zinc', 'log vitamin d', 'log vitamin c',
+      'took my vitamins', 'took my vitamin', 'took my supplement', 'took my supplements',
+      'took supplements', 'log my pills', 'add my pills',
+      'morning supplements', 'breakfast supplements', 'lunch supplements',
+      'dinner supplements', 'bedtime supplements',
+    ],
     command: 'LOG_SUPPLEMENT',
     label: 'Log Supplement',
   },
@@ -176,47 +220,74 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
       'log snack',     'add snack',
       'log brunch',    'add brunch',
       'log supper',    'add supper',
+      'just ate', 'had breakfast', 'had lunch', 'had dinner', 'had a snack',
+      'food entry', 'meal entry',
     ],
     command: 'LOG_MEAL',
     label: 'Log Meal',
   },
   {
-    patterns: ['open report', 'go to report', 'show report', 'reports', 'view report'],
+    patterns: [
+      'open report', 'go to report', 'show report', 'reports', 'view report',
+      'see my report', 'my report', 'view my log',
+    ],
     command: 'OPEN_REPORTS',
     label: 'Open Reports',
   },
   {
-    patterns: ['insight', 'open insight', 'show insight', 'view insight', 'analytics'],
+    patterns: [
+      'insight', 'open insight', 'show insight', 'view insight', 'analytics',
+      'ai insight', 'show analytics', 'my insights', 'view analytics', 'ai analysis',
+    ],
     command: 'OPEN_INSIGHTS',
     label: 'Open Insights',
   },
   {
-    patterns: ['go home', 'open home', 'dashboard', 'home screen', 'main screen'],
+    patterns: [
+      'go home', 'open home', 'dashboard', 'home screen', 'main screen',
+      'go to dashboard', 'show dashboard', 'back to home', 'home page',
+    ],
     command: 'OPEN_HOME',
     label: 'Go Home',
   },
   {
-    patterns: ['open log', 'view log', 'my log', 'history', 'log history'],
+    patterns: [
+      'open log', 'view log', 'my log', 'history', 'log history',
+      'see my entries', 'view entries', 'my entries', 'entry history',
+    ],
     command: 'OPEN_LOG',
     label: 'Open Log',
   },
   {
-    patterns: ['conditions', 'my conditions', 'open conditions', 'show conditions'],
+    patterns: [
+      'conditions', 'my conditions', 'open conditions', 'show conditions',
+      'view conditions', 'condition list', 'manage conditions', 'my diagnoses',
+    ],
     command: 'OPEN_CONDITIONS',
     label: 'Open Conditions',
   },
   {
-    patterns: ['notes', 'open notes', 'my notes', 'show notes', 'view notes'],
+    patterns: [
+      'open notes', 'my notes', 'show notes', 'view notes',
+      'journal', 'open journal', 'my journal', 'view journal', 'show journal',
+    ],
     command: 'OPEN_NOTES',
     label: 'Open Notes',
   },
   {
-    patterns: ['supplements', 'open supplements', 'my supplements', 'show supplements', 'view supplements'],
+    patterns: [
+      'open supplements', 'my supplements', 'show supplements', 'view supplements',
+      'supplement list', 'supplement schedule', 'my vitamins', 'view vitamins', 'supplements page',
+    ],
     command: 'OPEN_SUPPLEMENTS',
     label: 'Open Supplements',
   },
   {
-    patterns: ['add note', 'new note', 'quick note', 'take note', 'note this'],
+    patterns: [
+      'add note', 'new note', 'quick note', 'take note', 'note this',
+      'write a note', 'write note', 'make a note', 'make note',
+      'journal entry', 'create note', 'save a note', 'dictate note',
+    ],
     command: 'ADD_NOTE',
     label: 'Add Note',
   },
@@ -232,16 +303,26 @@ function matchCommand(transcript: string): CommandMatch | null {
   }
 
   for (const { patterns, command, label } of COMMAND_PATTERNS) {
-    if (patterns.some(p => t.includes(p))) {
+    if (patterns.some(p => {
+      // Multi-word patterns: simple substring match (spaces imply word context)
+      if (p.includes(' ')) return t.includes(p);
+      // Single-word patterns: require word boundary so e.g. 'supplement' (singular)
+      // doesn't match "supplements" (plural) and 'medication' doesn't match "medications".
+      try { return new RegExp(`\\b${p}\\b`).test(t); } catch { return t.includes(p); }
+    })) {
       return { command, label };
     }
   }
 
-  // ── Regex fallbacks for broad "mark taken" phrasing ──────────────────────
+  // ── Regex fallbacks — catch free-form "mark/log taken" phrasings ─────────
   // These cover patterns where a drug/supplement name sits between key words,
-  // e.g. "mark Wellbutrin taken", "took Wellbutrin", "take my Wellbutrin".
+  // e.g. "mark Wellbutrin taken", "log ibuprofen taken", "took Wellbutrin".
   // Rule: always support wide phrase variety — never require a single rigid form.
 
+  // "log/add/record <name> taken" — most common free-form pattern e.g. "log ibuprofen taken"
+  if (/\b(?:log|add|record)\b.+\btaken\b/.test(t) && !/\b(?:my\s+)?supplements?\b/.test(t)) {
+    return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
+  }
   // "mark <name> taken" / "mark <name> as taken"
   if (/\bmark\b.+\b(?:as\s+)?taken\b/.test(t)) {
     return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
@@ -250,8 +331,11 @@ function matchCommand(transcript: string): CommandMatch | null {
   if (/\b(?:took|take|taken)\b/.test(t) && !/\b(?:my\s+)?supplements?\b/.test(t)) {
     return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
   }
+  // "<name> taken" — bare phrase, STT may have dropped leading verb entirely
+  if (/^.{2,}\s+taken$/.test(t)) {
+    return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
+  }
   // Broad "mark <anything>" fallback — handles STT dropping "taken" entirely.
-  // e.g. "mark testmed taken" → STT → "mark med TestMed" (no "taken" in output).
   // Guard: exclude "check-in" phrases to avoid collision.
   if (/\bmark\s+\S/.test(t) && !/check[-\s]?in/.test(t)) {
     return { command: 'MARK_SUPPLEMENT_TAKEN', label: 'Mark Taken' };
@@ -317,6 +401,32 @@ function extractInlineSymptom(textAfterWake: string): SymptomPrefill | null {
       return { symptomName: symptomName2, conditionHint: '', severity: severity2 };
     }
   }
+
+  // ── "I have/feel/am experiencing X" shorthand ─────────────────────────────
+  // Handles: "i have a headache", "i'm feeling dizzy", "i am experiencing nausea",
+  //          "feeling nauseous", "got a migraine", "having a bad flare"
+  const feelReActual = new RegExp(
+    `^(?:i(?:'m|\\s+am|\\s+feel|\\s+have|\\s+got)|\\bfeeling|\\bgot\\s+a)\\s+` +
+    `(?:(?:a|an|some|really|very|quite|bad)\\s+)?` +
+    `(?:(${SEVERITY_PATTERN})\\s+)?` +
+    `(.+?)` +
+    `(?:\\s+(?:today|again|right\\s+now|at\\s+the\\s+moment|atm))?$`,
+    'i',
+  );
+  const fm = t.match(feelReActual);
+  if (fm) {
+    const severityWord3 = fm[1]?.toLowerCase();
+    const rawName = fm[2]
+      .replace(/^(?:a|an|the|some|really|very|quite|bad)\s+/i, '')
+      .trim();
+    // Exclude positive states — these aren't worth logging as symptoms
+    const positiveStates = ['good', 'fine', 'okay', 'ok', 'well', 'better', 'great', 'amazing', 'fantastic', 'wonderful', 'alright', 'perfect'];
+    if (rawName && rawName.length >= 2 && !positiveStates.includes(rawName.toLowerCase())) {
+      const severity3 = severityWord3 ? SEVERITY_WORDS[severityWord3] : undefined;
+      return { symptomName: toTitleCase(rawName), conditionHint: '', severity: severity3 };
+    }
+  }
+
   return null;
 }
 
@@ -459,6 +569,26 @@ function extractSupplementTakenPrefill(
   if (!raw) {
     const mE = t.match(/\b(?:took|take|taken)\s+(?:my\s+)?(.+)/i);
     if (mE) raw = mE[1].trim();
+  }
+
+  // Pattern G: "log/add/record [my] <name> [as] taken" — name BEFORE "taken"
+  // Fixes: "log ibuprofen taken", "add aspirin taken", "record my vitamin d taken"
+  if (!raw) {
+    const mG = t.match(/\b(?:log|add|record)\s+(?:my\s+)?(.+?)\s+(?:as\s+)?taken\b/i);
+    if (mG) raw = mG[1].trim();
+  }
+
+  // Pattern H: bare "<name> taken" — STT dropped the leading verb entirely
+  // Fixes: "ibuprofen taken", "my aspirin taken"
+  if (!raw) {
+    const mH = t.match(/^(?:my\s+|the\s+)?(.+?)\s+(?:as\s+)?taken\b/i);
+    if (mH) {
+      const candidate = mH[1].replace(/^(?:my|the|a)\s+/i, '').trim();
+      // Guard: don't capture if candidate contains command verbs (those are handled above)
+      if (candidate.length >= 2 && !/\b(?:log|add|record|mark|i|already|just|have)\b/i.test(candidate)) {
+        raw = candidate;
+      }
+    }
   }
 
   // Pattern F (fallback): bare "mark [my/the] <name>" — STT dropped "taken" entirely.

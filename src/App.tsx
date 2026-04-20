@@ -376,6 +376,9 @@ function AppContent() {
       case 'OPEN_SUPPLEMENTS':
         setView('supplements');
         break;
+      case 'OPEN_MEDICATIONS':
+        setView('meds');
+        break;
       case 'OPEN_REPORTS':
         setView('reports');
         break;
