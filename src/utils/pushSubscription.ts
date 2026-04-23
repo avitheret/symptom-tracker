@@ -20,19 +20,22 @@ export function isPushSupported(): boolean {
 
 export function isIosDevice(): boolean {
   if (typeof navigator === 'undefined') return false;
-  return (
-    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    // iPad with desktop UA (iPadOS 13+)
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
+  // iPhone / older iPad UA
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) return true;
+  // iPadOS 13+ sends a Mac UA — detect by touch support + Mac UA
+  if (/mac/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1) return true;
+  return false;
 }
 
 export function isIosStandalone(): boolean {
   if (typeof window === 'undefined') return false;
-  return (
-    'standalone' in window.navigator &&
-    (window.navigator as { standalone?: boolean }).standalone === true
-  );
+  // iOS Safari PWA property
+  if ((window.navigator as { standalone?: boolean }).standalone === true) return true;
+  // Cross-platform fallback (works on Android Chrome too)
+  try {
+    if (window.matchMedia('(display-mode: standalone)').matches) return true;
+  } catch { /* ignore */ }
+  return false;
 }
 
 export function getPushPermission(): NotificationPermission | 'unsupported' {

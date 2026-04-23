@@ -16,7 +16,7 @@ import {
 } from '../utils/pushSubscription';
 import { formatTime12 } from '../utils/notifications';
 import type { Reminder } from '../types';
-import { Button, Card, EmptyState } from './ui';
+import { Card, EmptyState } from './ui';
 import ReminderModal from './ReminderModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -102,56 +102,70 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const iosDevice = isIosDevice();
+  const iosDevice   = isIosDevice();
   const iosStandalone = isIosStandalone();
-  const supported = isPushSupported();
+  const supported   = isPushSupported();
 
-  // Nothing to show if push isn't relevant
-  if (!supported && !iosDevice) return null;
-
-  // Already granted — show small green badge
+  // ── Already granted ──────────────────────────────────────────────────────
   if (permission === 'granted') {
     return (
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 rounded-2xl mb-4">
-        <CheckCircle size={15} className="text-emerald-500 flex-shrink-0" />
-        <p className="text-xs font-medium text-emerald-700">Push notifications active</p>
+      <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-2xl">
+        <CheckCircle size={18} className="text-emerald-500 flex-shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-emerald-700">Push notifications are on</p>
+          <p className="text-xs text-emerald-600 mt-0.5">You'll receive alerts when reminders are due.</p>
+        </div>
       </div>
     );
   }
 
-  // Blocked — red banner
+  // ── Blocked ──────────────────────────────────────────────────────────────
   if (permission === 'denied') {
     return (
-      <div className="flex items-start gap-3 px-4 py-3 bg-rose-50 border border-rose-100 rounded-2xl mb-4">
-        <BellOff size={16} className="text-rose-500 flex-shrink-0 mt-0.5" />
+      <div className="flex items-start gap-3 px-4 py-3.5 bg-rose-50 border border-rose-100 rounded-2xl">
+        <BellOff size={18} className="text-rose-500 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-rose-700">Notifications blocked</p>
-          <p className="text-xs text-rose-500 mt-0.5">
-            Enable notifications in your browser settings to receive reminders.
+          <p className="text-sm font-semibold text-rose-700">Notifications are blocked</p>
+          <p className="text-xs text-rose-500 mt-1 leading-relaxed">
+            Go to <strong>Settings → Safari → Notifications</strong> and allow notifications for this site, then come back and tap Enable.
           </p>
         </div>
       </div>
     );
   }
 
-  // iOS + NOT on home screen — tell them to add first
+  // ── iOS: not installed to Home Screen yet ────────────────────────────────
   if (iosDevice && !iosStandalone) {
     return (
-      <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl mb-4">
-        <Smartphone size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+      <div className="flex items-start gap-3 px-4 py-3.5 bg-amber-50 border border-amber-200 rounded-2xl">
+        <Smartphone size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-amber-800">Add to Home Screen first</p>
+          <p className="text-sm font-semibold text-amber-800">Step 1 — Add to Home Screen</p>
           <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-            To receive push notifications on iOS, tap the{' '}
-            <strong>Share</strong> icon in Safari, then choose{' '}
-            <strong>Add to Home Screen</strong>. Then reopen the app and enable notifications.
+            Tap the <strong>Share ↑</strong> button in Safari then choose{' '}
+            <strong>Add to Home Screen</strong>. Open the app from your home screen, then come back here to enable push.
           </p>
         </div>
       </div>
     );
   }
 
-  // Default — show enable button (iOS standalone or non-iOS)
+  // ── Device doesn't support push at all (old iOS, non-standard browser) ───
+  if (!supported) {
+    return (
+      <div className="flex items-start gap-3 px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+        <Info size={18} className="text-slate-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-slate-600">Push not available on this device</p>
+          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+            iOS 16.4+ required. You can still use reminders — they'll show as in-app alerts when the app is open.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Default: show the Enable button ─────────────────────────────────────
   async function handleEnable() {
     setLoading(true);
     setError(null);
@@ -159,7 +173,6 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
       const sub = await subscribeToPush(VAPID_PUBLIC_KEY);
       if (sub && user) {
         const utcOffsetMinutes = new Date().getTimezoneOffset() * -1;
-        // Get JWT from Supabase session if available
         let jwt = '';
         try {
           const { supabase: sb, CLOUD_ENABLED } = await import('../lib/supabase');
@@ -167,11 +180,13 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
             const { data } = await sb.auth.getSession();
             jwt = data.session?.access_token ?? '';
           }
-        } catch { /* local mode — no JWT needed */ }
+        } catch { /* local mode */ }
         if (jwt) {
           await savePushSubscription(sub, jwt, utcOffsetMinutes);
         }
         onSubscribed();
+      } else if (!sub) {
+        setError('Permission was denied. Go to Settings → Safari → Notifications to allow it.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to enable notifications.');
@@ -181,24 +196,28 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
   }
 
   return (
-    <div className="flex items-start gap-3 px-4 py-3 bg-violet-50 border border-violet-100 rounded-2xl mb-4">
-      <Info size={16} className="text-violet-500 flex-shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-violet-800">Enable notifications</p>
-        <p className="text-xs text-violet-600 mt-0.5">
-          Get push notifications when your reminders are due.
-        </p>
-        {error && <p className="text-xs text-rose-500 mt-1">{error}</p>}
+    <div className="bg-violet-600 rounded-2xl p-4">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+          <Bell size={18} className="text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-white">Enable push notifications</p>
+          <p className="text-xs text-white/70 mt-0.5 leading-relaxed">
+            Get alerts on your phone even when the app is closed.
+          </p>
+          {error && (
+            <p className="text-xs text-rose-200 mt-2 leading-relaxed">{error}</p>
+          )}
+        </div>
       </div>
-      <Button
-        variant="primary"
-        size="sm"
-        loading={loading}
+      <button
         onClick={handleEnable}
-        className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white"
+        disabled={loading}
+        className="mt-3 w-full py-2.5 bg-white text-violet-700 font-semibold text-sm rounded-xl active:scale-[0.98] transition-all disabled:opacity-60 min-h-[44px]"
       >
-        Enable
-      </Button>
+        {loading ? 'Enabling…' : 'Enable Notifications →'}
+      </button>
     </div>
   );
 }

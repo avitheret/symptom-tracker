@@ -220,10 +220,10 @@ export default function ReminderModal({ reminder, onClose }: Props) {
           <Bell size={16} className={enabled ? 'text-violet-500' : 'text-slate-400'} />
           <div className="text-left flex-1">
             <p className="text-sm font-semibold">
-              {enabled ? 'Active' : 'Paused'}
+              {enabled ? 'Enabled' : 'Disabled'}
             </p>
             <p className="text-xs opacity-70">
-              {enabled ? 'You will receive notifications' : 'Notifications are paused'}
+              {enabled ? 'Reminder is active' : 'Reminder is paused'}
             </p>
           </div>
           {/* Toggle pill */}
