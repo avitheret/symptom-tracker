@@ -97,12 +97,15 @@ interface PushBannerProps {
   onSubscribed: () => void;
 }
 
-function PushBanner({ permission, onSubscribed }: PushBannerProps) {
+function PushBanner({ permission: permissionProp, onSubscribed }: PushBannerProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // null = still checking; true = subscription exists on server; false = needs setup
   const [subscribed, setSubscribed] = useState<boolean | null>(null);
+  // Local override — lets us flip to 'denied' after requestPermission() returns denied
+  const [pushPermissionOverride, setPushPermissionOverride] = useState<NotificationPermission | 'unsupported' | null>(null);
+  const permission = pushPermissionOverride ?? permissionProp;
 
   const iosDevice     = isIosDevice();
   const iosStandalone = isIosStandalone();
@@ -142,7 +145,9 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
         <div>
           <p className="text-sm font-semibold text-rose-700">Notifications are blocked</p>
           <p className="text-xs text-rose-500 mt-1 leading-relaxed">
-            Go to <strong>Settings → Safari → Notifications</strong> and allow notifications for this site, then come back and tap Enable.
+            On your iPhone: go to <strong>Settings</strong>, scroll down to find{' '}
+            <strong>this app</strong> (the home-screen icon name), tap it, then tap{' '}
+            <strong>Notifications → Allow Notifications</strong>. Then come back and tap Enable.
           </p>
         </div>
       </div>
@@ -206,7 +211,8 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
         setSubscribed(true);
         onSubscribed();
       } else if (!sub) {
-        setError('Permission was denied. Go to Settings → Safari → Notifications to allow it.');
+        // requestPermission() returned 'denied' — update state so the blocked banner shows
+        setPushPermissionOverride('denied');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to enable notifications.');
