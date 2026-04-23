@@ -10,7 +10,7 @@
 
 4. **Version bump** — bump `APP_VERSION` in `src/components/Dashboard.tsx` by one sub-version after every completed task (e.g. v3.2.0 → v3.2.1 for patches, v3.3.0 for new features).
 
-5. **Ask before acting** — if a request is ambiguous, ask one clarifying question before writing any code.
+5. **Ask before acting** — if a request is ambiguous, ask one clarifying question before writing any code. Also proactively raise edge cases or feature scenarios the request didn't explicitly cover (e.g. "What should happen if X?") — ask these upfront rather than making silent assumptions.
 
 ## Stack constraints (never violate):
 

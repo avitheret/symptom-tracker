@@ -28,6 +28,7 @@ import VoiceCommandToast from './components/VoiceCommandToast';
 import Onboarding, { isOnboardingDone } from './components/Onboarding';
 import Notes from './components/Notes';
 import NoteComposer from './components/NoteComposer';
+import Reminders from './components/Reminders';
 import Supplements from './components/Supplements';
 import SupplementModal from './components/SupplementModal';
 import SupplementScheduleModal from './components/SupplementScheduleModal';
@@ -379,6 +380,9 @@ function AppContent() {
       case 'OPEN_MEDICATIONS':
         setView('meds');
         break;
+      case 'OPEN_REMINDERS':
+        setView('reminders');
+        break;
       case 'OPEN_REPORTS':
         setView('reports');
         break;
@@ -514,6 +518,7 @@ function AppContent() {
             onOpenMedSchedule={() => { setEditingSchedule(undefined); setShowMedSchedule(true); }}
             onEditMedSchedule={(s) => { setEditingSchedule(s); setShowMedSchedule(true); }}
             onOpenSupplementSchedule={() => { setEditingSupplementSchedule(undefined); setShowSupplementSchedule(true); }}
+            onAddReminder={() => setView('reminders')}
             onVoicePress={manualActivate}
           />
         )}
@@ -562,6 +567,7 @@ function AppContent() {
             onExtractFromNote={handleExtractFromNote}
           />
         )}
+        {state.view === 'reminders' && <Reminders />}
         {state.view === 'admin' && <AdminPanel />}
       </main>
 

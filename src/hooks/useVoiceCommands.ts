@@ -31,6 +31,7 @@ export type VoiceCommand =
   | 'OPEN_NOTES'
   | 'OPEN_SUPPLEMENTS'
   | 'OPEN_MEDICATIONS'
+  | 'OPEN_REMINDERS'
   | 'ADD_NOTE'
   | 'FREE_FORM'
   | 'CANCEL';
@@ -281,6 +282,14 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     ],
     command: 'OPEN_SUPPLEMENTS',
     label: 'Open Supplements',
+  },
+  {
+    patterns: [
+      'open reminders', 'my reminders', 'show reminders', 'view reminders',
+      'reminders page', 'reminder list', 'notifications', 'my notifications',
+    ],
+    command: 'OPEN_REMINDERS',
+    label: 'Open Reminders',
   },
   {
     patterns: [

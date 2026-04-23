@@ -49,6 +49,7 @@ export function useCloudStateSync() {
     supplementLogs:       state.supplementLogs,
     supplementSchedules:  state.supplementSchedules,
     notificationPrefs:    state.notificationPrefs,
+    reminders:            state.reminders,
   });
 
   // ── Pull ────────────────────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ export function useCloudStateSync() {
     state.supplementLogs,
     state.supplementSchedules,
     state.notificationPrefs,
+    state.reminders,
   ]);
 
   // ── On app focus/restore: always pull fresh ─────────────────────────────────

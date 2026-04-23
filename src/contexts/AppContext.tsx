@@ -3,7 +3,7 @@ import type {
   AIInsight, Condition, DailyCheckIn, ExtractionResult, ExtractionStatus,
   ExtractedCheckIn, ExtractedMedication, ExtractedSupplement, ExtractedSymptom, ExtractedTrigger,
   FoodLog, MedicationLog, MedicationSchedule, NotificationPreferences, Note,
-  Patient, PatientCondition, SupplementDatabaseEntry, Symptom,
+  Patient, PatientCondition, Reminder, SupplementDatabaseEntry, Symptom,
   SupplementLog, SupplementSchedule,
   TrackingEntry, TriggerLog, View,
 } from '../types';
@@ -37,6 +37,7 @@ interface State {
   supplementSchedules: SupplementSchedule[];
   supplementDatabase: SupplementDatabaseEntry[];
   notificationPrefs: NotificationPreferences;
+  reminders: Reminder[];
   selectedConditionId: string | null;
   view: View;
 }
@@ -62,6 +63,7 @@ const initialState: State = {
   supplementSchedules: [],
   supplementDatabase: [],
   notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
+  reminders: [],
   selectedConditionId: null,
   view: 'dashboard',
 };
@@ -110,6 +112,10 @@ type Action =
   | { type: 'SET_SUPPLEMENT_DATABASE'; entries: SupplementDatabaseEntry[] }
   | { type: 'DELETE_SUPPLEMENT_DATABASE_ENTRY'; id: string }
   | { type: 'SET_NOTIFICATION_PREFS'; prefs: Partial<NotificationPreferences> }
+  | { type: 'ADD_REMINDER'; reminder: Reminder }
+  | { type: 'UPDATE_REMINDER'; id: string; patch: Partial<Omit<Reminder, 'id' | 'patientId' | 'createdAt'>> }
+  | { type: 'DELETE_REMINDER'; id: string }
+  | { type: 'TOGGLE_REMINDER'; id: string }
   | { type: 'SELECT_CONDITION'; id: string | null }
   | { type: 'SET_VIEW'; view: View }
   | { type: 'LOAD'; state: State }
@@ -179,6 +185,7 @@ function reducer(state: State, action: Action): State {
         supplementLogs: (state.supplementLogs ?? []).filter(l => l.patientId !== action.id),
         supplementSchedules: (state.supplementSchedules ?? []).filter(s => s.patientId !== action.id),
         supplementDatabase: (state.supplementDatabase ?? []).filter(e => e.patientId !== action.id),
+        reminders: (state.reminders ?? []).filter(r => r.patientId !== action.id),
       };
     }
 
@@ -459,6 +466,28 @@ function reducer(state: State, action: Action): State {
     case 'SET_NOTIFICATION_PREFS':
       return { ...state, notificationPrefs: { ...state.notificationPrefs, ...action.prefs } };
 
+    case 'ADD_REMINDER':
+      return { ...state, reminders: [...(state.reminders ?? []), action.reminder] };
+
+    case 'UPDATE_REMINDER':
+      return {
+        ...state,
+        reminders: (state.reminders ?? []).map(r =>
+          r.id === action.id ? { ...r, ...action.patch } : r
+        ),
+      };
+
+    case 'DELETE_REMINDER':
+      return { ...state, reminders: (state.reminders ?? []).filter(r => r.id !== action.id) };
+
+    case 'TOGGLE_REMINDER':
+      return {
+        ...state,
+        reminders: (state.reminders ?? []).map(r =>
+          r.id === action.id ? { ...r, enabled: !r.enabled } : r
+        ),
+      };
+
     case 'SELECT_CONDITION':
       return { ...state, selectedConditionId: action.id };
 
@@ -531,6 +560,7 @@ function migrateV1ToV2(): State | null {
       supplementSchedules: [],
       supplementDatabase: [],
       notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
+      reminders: [],
       selectedConditionId: (v1.selectedConditionId as string | null) ?? null,
       view: 'dashboard',
     };
@@ -560,6 +590,7 @@ function loadInitialState(): State {
           supplementSchedules: saved.supplementSchedules ?? [],
           supplementDatabase: saved.supplementDatabase ?? [],
           notificationPrefs: saved.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS,
+          reminders: saved.reminders ?? [],
           selectedConditionId: saved.selectedConditionId ?? null,
           view: 'dashboard',
         };
@@ -638,6 +669,10 @@ interface ContextValue {
   setSupplementDatabase: (entries: SupplementDatabaseEntry[]) => void;
   deleteSupplementDatabaseEntry: (id: string) => Promise<void>;
   setNotificationPrefs: (prefs: Partial<NotificationPreferences>) => void;
+  addReminder: (input: Omit<Reminder, 'id' | 'createdAt'>) => void;
+  updateReminder: (id: string, patch: Partial<Omit<Reminder, 'id' | 'patientId' | 'createdAt'>>) => void;
+  deleteReminder: (id: string) => void;
+  toggleReminder: (id: string) => void;
   selectCondition: (id: string | null) => void;
   setView: (view: View) => void;
   getActivePatient: () => Patient | undefined;
@@ -675,12 +710,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supplementSchedules: state.supplementSchedules,
         supplementDatabase: state.supplementDatabase,
         notificationPrefs: state.notificationPrefs,
+        reminders: state.reminders,
         selectedConditionId: state.selectedConditionId,
       }));
     } catch {
       // ignore quota errors
     }
-  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.supplementDatabase, state.notificationPrefs, state.selectedConditionId]);
+  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.supplementDatabase, state.notificationPrefs, state.reminders, state.selectedConditionId]);
 
   const createPatient = useCallback((name: string, conditionIds: string[], extra?: { dateOfBirth?: string; notes?: string; diagnosis?: string }) => {
     const id = `pat-${Date.now()}`;
@@ -827,6 +863,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setNotificationPrefs = useCallback((prefs: Partial<NotificationPreferences>) => {
     dispatch({ type: 'SET_NOTIFICATION_PREFS', prefs });
+  }, []);
+
+  const addReminder = useCallback((input: Omit<Reminder, 'id' | 'createdAt'>) => {
+    const reminder: Reminder = {
+      ...input,
+      id: `rem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: Date.now(),
+    };
+    dispatch({ type: 'ADD_REMINDER', reminder });
+  }, []);
+
+  const updateReminder = useCallback((id: string, patch: Partial<Omit<Reminder, 'id' | 'patientId' | 'createdAt'>>) => {
+    dispatch({ type: 'UPDATE_REMINDER', id, patch });
+  }, []);
+
+  const deleteReminder = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_REMINDER', id });
+  }, []);
+
+  const toggleReminder = useCallback((id: string) => {
+    dispatch({ type: 'TOGGLE_REMINDER', id });
   }, []);
 
   const addTriggerLog = useCallback(
@@ -1270,6 +1327,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSupplementDatabase,
         deleteSupplementDatabaseEntry,
         setNotificationPrefs,
+        addReminder,
+        updateReminder,
+        deleteReminder,
+        toggleReminder,
         selectCondition,
         setView,
         getActivePatient,

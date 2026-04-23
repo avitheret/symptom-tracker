@@ -155,7 +155,23 @@ export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday',
 
 export const ONBOARDING_CONDITION_LIMIT = 1;
 
-export type View = 'dashboard' | 'conditions' | 'meals' | 'supplements' | 'meds' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin';
+export type View = 'dashboard' | 'conditions' | 'meals' | 'supplements' | 'meds' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin' | 'reminders';
+
+// ── Reminders ─────────────────────────────────────────────────────────────────
+
+export type ReminderRepeat = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+export interface Reminder {
+  id: string;
+  patientId: string;
+  title: string;
+  time: string;           // HH:MM (24h) — for hourly, :MM is the minute offset
+  repeat: ReminderRepeat;
+  daysOfWeek?: number[];  // [0–6] for weekly (0 = Sun)
+  dayOfMonth?: number;    // 1–31 for monthly
+  enabled: boolean;
+  createdAt: number;
+}
 
 // ── Notes ─────────────────────────────────────────────────────────────────────
 

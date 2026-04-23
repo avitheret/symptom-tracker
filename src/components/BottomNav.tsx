@@ -1,4 +1,4 @@
-import { LayoutDashboard, UtensilsCrossed, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, UtensilsCrossed, BarChart2, Bell } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import type { View } from '../types';
 
@@ -22,6 +22,13 @@ const TABS: Array<{
     defaultView: 'meals',
     group: new Set<View>(['meals']),
     Icon: UtensilsCrossed,
+  },
+  {
+    id: 'reminders',
+    label: 'Reminders',
+    defaultView: 'reminders',
+    group: new Set<View>(['reminders']),
+    Icon: Bell,
   },
   {
     id: 'reports',

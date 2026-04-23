@@ -12,12 +12,13 @@ import ReviewQueue from './ReviewQueue';
 import AIInsightsCard from './AIInsightsCard';
 import MedScheduleWidget from './MedScheduleWidget';
 import SupplementScheduleWidget from './SupplementScheduleWidget';
+import DashboardRemindersCard from './DashboardRemindersCard';
 import DashboardCustomizer from './DashboardCustomizer';
 import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState } from './ui';
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.18.2';
+const APP_VERSION = 'v3.19.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -102,6 +103,7 @@ interface Props {
   onOpenMedSchedule?: () => void;
   onEditMedSchedule?: (schedule: import('../types').MedicationSchedule) => void;
   onOpenSupplementSchedule?: () => void;
+  onAddReminder?: () => void;
   onVoicePress?: () => void;
 }
 
@@ -263,7 +265,7 @@ function RecentLogWidget({ entries, conditions, foodLogs, supplementLogs, onSeeA
   );
 }
 
-export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onEditMeal, onOpenMedSchedule, onOpenSupplementSchedule, onVoicePress }: Props) {
+export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedication, onOpenFoodLog, onEditMeal, onOpenMedSchedule, onOpenSupplementSchedule, onAddReminder, onVoicePress }: Props) {
   const { state, setView, selectCondition, getActivePatient, getPatientConditions, getTodayCheckIn, removeConditionFromPatient, loadSmallDemoData, removeDemoData } = useApp();
   useAuth();
   const [trackingCondition,    setTrackingCondition]    = useState<Condition | null>(null);
@@ -545,6 +547,9 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
           ))}
         </div>
       )}
+
+      {/* ── Today's Reminders card ────────────────────────── */}
+      <DashboardRemindersCard onAddReminder={onAddReminder ?? (() => {})} />
 
       {/* ── First-run welcome — shown until the user adds a condition ── */}
       {conditions.length === 0 && patientEntries.length === 0 && (
