@@ -101,13 +101,25 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // null = still checking; true = subscription exists on server; false = needs setup
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
 
-  const iosDevice   = isIosDevice();
+  const iosDevice     = isIosDevice();
   const iosStandalone = isIosStandalone();
-  const supported   = isPushSupported();
+  const supported     = isPushSupported();
 
-  // ── Already granted ──────────────────────────────────────────────────────
-  if (permission === 'granted') {
+  // When permission is granted, check whether a live push subscription actually exists.
+  // Permission ≠ subscription — the subscription save may have failed in a previous session.
+  useEffect(() => {
+    if (permission !== 'granted' || !supported) return;
+    navigator.serviceWorker.ready
+      .then(reg => reg.pushManager.getSubscription())
+      .then(sub => setSubscribed(sub !== null))
+      .catch(() => setSubscribed(false));
+  }, [permission, supported]);
+
+  // ── Already granted AND subscription confirmed ────────────────────────────
+  if (permission === 'granted' && subscribed === true) {
     return (
       <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-2xl">
         <CheckCircle size={18} className="text-emerald-500 flex-shrink-0" />
@@ -118,6 +130,9 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
       </div>
     );
   }
+
+  // Still checking — show nothing yet
+  if (permission === 'granted' && subscribed === null) return null;
 
   // ── Blocked ──────────────────────────────────────────────────────────────
   if (permission === 'denied') {
@@ -165,7 +180,11 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
     );
   }
 
-  // ── Default: show the Enable button ─────────────────────────────────────
+  // ── Default: show the Enable / Re-activate button ────────────────────────
+  // permission === 'granted' && subscribed === false → re-save silently (no prompt)
+  // permission !== 'granted' → will trigger iOS permission dialog
+  const alreadyGranted = permission === 'granted' && subscribed === false;
+
   async function handleEnable() {
     setLoading(true);
     setError(null);
@@ -184,6 +203,7 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
         if (jwt) {
           await savePushSubscription(sub, jwt, utcOffsetMinutes);
         }
+        setSubscribed(true);
         onSubscribed();
       } else if (!sub) {
         setError('Permission was denied. Go to Settings → Safari → Notifications to allow it.');
@@ -202,9 +222,13 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
           <Bell size={18} className="text-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-white">Enable push notifications</p>
+          <p className="text-sm font-bold text-white">
+            {alreadyGranted ? 'Finish setting up push' : 'Enable push notifications'}
+          </p>
           <p className="text-xs text-white/70 mt-0.5 leading-relaxed">
-            Get alerts on your phone even when the app is closed.
+            {alreadyGranted
+              ? 'Permission is granted — tap to register this device.'
+              : 'Get alerts on your phone even when the app is closed.'}
           </p>
           {error && (
             <p className="text-xs text-rose-200 mt-2 leading-relaxed">{error}</p>
@@ -216,7 +240,7 @@ function PushBanner({ permission, onSubscribed }: PushBannerProps) {
         disabled={loading}
         className="mt-3 w-full py-2.5 bg-white text-violet-700 font-semibold text-sm rounded-xl active:scale-[0.98] transition-all disabled:opacity-60 min-h-[44px]"
       >
-        {loading ? 'Enabling…' : 'Enable Notifications →'}
+        {loading ? 'Registering…' : alreadyGranted ? 'Register This Device →' : 'Enable Notifications →'}
       </button>
     </div>
   );
