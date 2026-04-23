@@ -72,29 +72,35 @@ export default async function handler(req: Request, _context: Context) {
     return Response.json({ error: 'Missing subscription endpoint' }, { status: 400 });
   }
 
-  // ── Upsert into push_subscriptions ────────────────────────────────────────
+  // ── Upsert into push_subscriptions (delete-then-insert on endpoint) ─────────
   const base = `${supabaseUrl}/rest/v1`;
-  const headers = {
+  const restHeaders = {
     apikey: serviceKey,
     Authorization: `Bearer ${serviceKey}`,
     'Content-Type': 'application/json',
-    Prefer: 'resolution=merge-duplicates',
   };
 
-  const upsertRes = await fetch(`${base}/push_subscriptions`, {
+  // Delete any existing subscription for this endpoint (stale or same device)
+  await fetch(
+    `${base}/push_subscriptions?endpoint=eq.${encodeURIComponent(subscription.endpoint)}`,
+    { method: 'DELETE', headers: restHeaders }
+  );
+
+  // Insert the fresh subscription
+  const insertRes = await fetch(`${base}/push_subscriptions`, {
     method: 'POST',
-    headers,
+    headers: restHeaders,
     body: JSON.stringify({
       user_id:             userId,
+      endpoint:            subscription.endpoint,
       subscription,
       utc_offset_minutes:  utcOffsetMinutes,
-      updated_at:          new Date().toISOString(),
     }),
   });
 
-  if (!upsertRes.ok) {
-    const err = await upsertRes.text();
-    console.error('[save-push-subscription] upsert failed:', err);
+  if (!insertRes.ok) {
+    const err = await insertRes.text();
+    console.error('[save-push-subscription] insert failed:', err);
     return Response.json({ error: 'Failed to save subscription' }, { status: 500 });
   }
 
