@@ -3,8 +3,10 @@
  *
  * Strategy (last-writer-wins per device):
  *   • On user login → pull cloud state; if cloud is newer, replace local.
- *   • On any state change → debounced push to cloud (4 s).
+ *   • On any state change → debounced push to cloud (1 s).
  *   • On tab/window re-focus → pull again (picks up changes from other devices).
+ *   • Supabase Realtime channel → instant pull when another device pushes,
+ *     even while this device has the app open in the foreground.
  *
  * Requires the following table in Supabase (see sync-schema.sql):
  *   create table user_app_state (
@@ -12,6 +14,8 @@
  *     state_json jsonb not null default '{}',
  *     updated_at timestamptz not null default now()
  *   );
+ *   -- Realtime (migration 004):
+ *   ALTER PUBLICATION supabase_realtime ADD TABLE user_app_state;
  */
 
 import { useEffect, useRef } from 'react';
@@ -31,6 +35,7 @@ export function useCloudStateSync() {
 
   const debounceRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justPulledRef    = useRef(false);  // prevents push immediately after pull
+  const justPushedRef    = useRef(false);  // prevents re-pull of our own push via Realtime
   const pullingRef       = useRef(false);  // prevents concurrent pulls
   const initialPullDone  = useRef(false);  // blocks push until first pull completes
 
@@ -100,6 +105,11 @@ export function useCloudStateSync() {
     try {
       const now = new Date().toISOString();
       console.log('[sync] pushing for user', userId.slice(0, 8) + '…');
+
+      // Mark as "just pushed" so the Realtime echo doesn't re-pull our own data
+      justPushedRef.current = true;
+      setTimeout(() => { justPushedRef.current = false; }, 3000);
+
       const { error } = await supabase
         .from(TABLE)
         .upsert(
@@ -118,13 +128,6 @@ export function useCloudStateSync() {
   }
 
   // ── On login / auth restore: pull using timestamp comparison ────────────────
-  // forceReplace=false: only apply cloud data if cloudAt > localAt.
-  // This is safe for all cases:
-  //   • New device / first login: localAt=0, any cloud timestamp wins ✓
-  //   • Multi-device: cloud is newer → wins ✓
-  //   • Save then refresh before push fires: cloud is same age → local wins ✓
-  // forceReplace=true was the previous approach but caused locally-saved changes
-  // to be wiped on refresh when the 4s push debounce hadn't completed yet.
   useEffect(() => {
     if (user?.id) pullFromCloud(user.id, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,7 +145,6 @@ export function useCloudStateSync() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  // Re-run whenever meaningful data changes (not view/selectedConditionId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     user?.id,
@@ -160,28 +162,16 @@ export function useCloudStateSync() {
     state.reminders,
   ]);
 
-  // ── On app focus/restore: always pull fresh ─────────────────────────────────
-  // Uses three events for broad browser/iOS coverage:
-  //   visibilitychange — desktop browsers, Android Chrome
-  //   pageshow         — iOS Safari bfcache restore (most reliable on iPhone)
-  //   focus            — fallback when visibilitychange doesn't fire
+  // ── On app focus/restore: pull if cloud is newer ────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     const uid = user.id;
 
-    // Use forceReplace=false: only apply cloud data if it's NEWER than the last
-    // local sync timestamp. This prevents the keyboard-dismiss / tab-focus cycle
-    // from overwriting locally-saved changes that haven't been pushed yet
-    // (the push debounce is 4 s — any focus event in that window would erase data).
-    // forceReplace=true is reserved for the initial login pull only.
     const handleFocus = () => pullFromCloud(uid, false);
-
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') pullFromCloud(uid, false);
     };
-
     const handlePageShow = (e: PageTransitionEvent) => {
-      // e.persisted = true means restored from bfcache (common on iOS)
       if (e.persisted || document.visibilityState === 'visible') pullFromCloud(uid, false);
     };
 
@@ -192,6 +182,43 @@ export function useCloudStateSync() {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('pageshow', handlePageShow);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // ── Supabase Realtime: instant pull when another device pushes ──────────────
+  // When Device A writes a new state_json, Supabase broadcasts a postgres_changes
+  // event. Device B (and any other open device) receives it and pulls immediately
+  // without needing a focus/visibility event.
+  //
+  // Guard: justPushedRef prevents Device A from re-pulling its own write
+  // (Supabase echoes the event back to all subscribers including the writer).
+  useEffect(() => {
+    if (!user?.id || !CLOUD_ENABLED || !supabase) return;
+    const uid = user.id;
+
+    const channel = supabase
+      .channel(`app-state-${uid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: TABLE,
+          filter: `user_id=eq.${uid}`,
+        },
+        () => {
+          if (justPushedRef.current || justPulledRef.current) return;
+          console.log('[sync] realtime: remote change detected — pulling');
+          pullFromCloud(uid, false);
+        }
+      )
+      .subscribe((status) => {
+        console.log('[sync] realtime channel status:', status);
+      });
+
+    return () => {
+      void supabase?.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
