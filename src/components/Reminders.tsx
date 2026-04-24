@@ -196,7 +196,7 @@ function PushBanner({ permission: permissionProp, onSubscribed }: PushBannerProp
     try {
       const sub = await subscribeToPush(VAPID_PUBLIC_KEY);
       if (sub && user) {
-        const utcOffsetMinutes = new Date().getTimezoneOffset() * -1;
+        // Resolve JWT — required to save subscription on the server
         let jwt = '';
         try {
           const { supabase: sb, CLOUD_ENABLED } = await import('../lib/supabase');
@@ -205,13 +205,20 @@ function PushBanner({ permission: permissionProp, onSubscribed }: PushBannerProp
             jwt = data.session?.access_token ?? '';
           }
         } catch { /* local mode */ }
-        if (jwt) {
-          await savePushSubscription(sub, jwt, utcOffsetMinutes);
+
+        if (!jwt) {
+          setError('Sign in to enable push notifications.');
+          return;
         }
+
+        const utcOffsetMinutes = new Date().getTimezoneOffset() * -1;
+        // Throws on HTTP error — prevents false-positive green banner
+        await savePushSubscription(sub, jwt, utcOffsetMinutes);
+
         setSubscribed(true);
         onSubscribed();
       } else if (!sub) {
-        // requestPermission() returned 'denied' — update state so the blocked banner shows
+        // requestPermission() returned 'denied' — show blocked banner
         setPushPermissionOverride('denied');
       }
     } catch (err) {

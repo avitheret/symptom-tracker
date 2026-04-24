@@ -91,7 +91,7 @@ export async function savePushSubscription(
   jwt: string,
   utcOffsetMinutes: number,
 ): Promise<void> {
-  await fetch('/.netlify/functions/save-push-subscription', {
+  const res = await fetch('/.netlify/functions/save-push-subscription', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -102,4 +102,9 @@ export async function savePushSubscription(
       utcOffsetMinutes,
     }),
   });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = ((await res.json()) as { error?: string }).error ?? detail; } catch { /* ignore */ }
+    throw new Error(`Could not register device: ${detail}`);
+  }
 }
