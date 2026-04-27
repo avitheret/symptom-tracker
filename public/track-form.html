@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Track Notes</title>
+  <style>
+    /* ── Page setup ─────────────────────────────────────────────────────────── */
+    @page {
+      size: A4 portrait;
+      margin: 12mm 14mm;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      color: #1e293b;
+      background: #fff;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 12mm 14mm;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 7mm;
+      padding-bottom: 4mm;
+      border-bottom: 2.5px solid #1e293b;
+    }
+
+    .title {
+      font-size: 26pt;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #1e293b;
+      line-height: 1;
+    }
+
+    .date-field {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      padding-bottom: 1mm;
+    }
+
+    .date-label {
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      white-space: nowrap;
+    }
+
+    .date-line {
+      width: 46mm;
+      border-bottom: 1.5px solid #94a3b8;
+    }
+
+    /* ── Table ──────────────────────────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid #475569;
+    }
+
+    /* Column widths */
+    .col-time      { width: 13%; }
+    .col-condition { width: 18%; }
+    .col-symptom   { width: 25%; }
+    .col-notes     { width: 44%; }
+
+    /* Header row */
+    thead tr {
+      background: #1e293b;
+    }
+
+    thead th {
+      padding: 2.5mm 3mm 2mm;
+      text-align: left;
+      vertical-align: bottom;
+      border-right: 1px solid #334155;
+      color: #fff;
+    }
+
+    thead th:last-child {
+      border-right: none;
+    }
+
+    .col-label {
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+      display: block;
+      line-height: 1;
+    }
+
+    .col-hint {
+      font-size: 6.5pt;
+      font-weight: 400;
+      color: #94a3b8;
+      display: block;
+      margin-top: 1.5mm;
+      line-height: 1.2;
+    }
+
+    /* Data rows */
+    tbody tr td {
+      height: 11.5mm;
+      padding: 1.5mm 3mm;
+      vertical-align: top;
+      border-right: 1px solid #cbd5e1;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    tbody tr td:last-child {
+      border-right: none;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Alternating row tint */
+    tbody tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    /* ── Footer ─────────────────────────────────────────────────────────────── */
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4mm;
+    }
+
+    .footer-note {
+      font-size: 7pt;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+
+    .footer-note strong {
+      color: #64748b;
+    }
+
+    .footer-brand {
+      font-size: 7pt;
+      font-weight: 700;
+      color: #cbd5e1;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    /* ── Print button (screen only) ─────────────────────────────────────────── */
+    .print-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #7c3aed;
+      color: #fff;
+      border: none;
+      padding: 12px 22px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(124, 58, 237, 0.35);
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+
+    .print-btn:hover { background: #6d28d9; }
+
+    @media print {
+      .print-btn { display: none; }
+      body { padding: 0; width: auto; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div class="header">
+    <div class="title">Track Notes</div>
+    <div class="date-field">
+      <span class="date-label">Date</span>
+      <div class="date-line"></div>
+    </div>
+  </div>
+
+  <!-- ── Tracking table ─────────────────────────────────────────────────── -->
+  <table>
+    <colgroup>
+      <col class="col-time">
+      <col class="col-condition">
+      <col class="col-symptom">
+      <col class="col-notes">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>
+          <span class="col-label">Time</span>
+          <span class="col-hint">HH : MM</span>
+        </th>
+        <th>
+          <span class="col-label">Condition</span>
+          <span class="col-hint">Leave blank to auto-detect</span>
+        </th>
+        <th>
+          <span class="col-label">Symptom / Med / Sup</span>
+          <span class="col-hint">What are you tracking?</span>
+        </th>
+        <th>
+          <span class="col-label">Notes</span>
+          <span class="col-hint">Severity, duration, context…</span>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+      <tr><td></td><td></td><td></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+  <div class="footer">
+    <p class="footer-note">
+      <strong>Condition</strong> — leave blank if unsure; the app will suggest a condition based on your symptoms. &nbsp;
+      <strong>Med / Sup</strong> — note dose if relevant.
+    </p>
+    <span class="footer-brand">SymTrack</span>
+  </div>
+
+  <!-- ── Print button (hidden on print) ─────────────────────────────────── -->
+  <button class="print-btn" onclick="window.print()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 6 2 18 2 18 9"/>
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+      <rect x="6" y="14" width="12" height="8"/>
+    </svg>
+    Print Form
+  </button>
+
+</body>
+</html>

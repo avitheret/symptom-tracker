@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Mic, PenLine, Trash2, Edit2, ClipboardList, Notebook, Sparkles, Check, Link2, Camera } from 'lucide-react';
+import { Mic, PenLine, Trash2, Edit2, ClipboardList, Notebook, Sparkles, Check, Link2, Camera, Printer } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import type { Note } from '../types';
 import { Sheet } from './ui';
@@ -204,6 +204,16 @@ export default function Notes({ onNewNote, onLogFromNote, onExtractFromNote }: P
             <p className="text-xs text-slate-400 mt-0.5">{notes.length} note{notes.length !== 1 ? 's' : ''}</p>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <a
+            href="/track-form.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Print tracking form"
+            className="flex items-center justify-center w-10 h-10 rounded-xl border border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 bg-white active:scale-95 transition-all"
+          >
+            <Printer size={16} />
+          </a>
         <button
           onClick={onNewNote}
           className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl min-h-[44px] active:scale-95 transition-transform shadow-sm"
@@ -211,6 +221,7 @@ export default function Notes({ onNewNote, onLogFromNote, onExtractFromNote }: P
           <PenLine size={15} />
           New Note
         </button>
+        </div>
       </div>
 
       {/* Empty state */}
