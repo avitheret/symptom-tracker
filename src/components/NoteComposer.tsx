@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, PenLine, Camera, Loader2 } from 'lucide-react';
+import { Mic, MicOff, PenLine, Camera, Loader2, AlignLeft } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { getSpeechRecognition } from '../utils/speech';
-import { scanHandwrittenNote } from '../utils/scanNote';
+import { scanHandwrittenNote, isTrackTable, parseTrackTable, trackTableToPlainText } from '../utils/scanNote';
+import type { TrackEntry } from '../utils/scanNote';
 import type { Note } from '../types';
 import { Sheet, Button } from './ui';
 
@@ -40,19 +41,29 @@ export default function NoteComposer({
   const { addNote, updateNote } = useApp();
   const isEditing = !!initialNote;
 
-  const [text,      setText]      = useState(initialNote?.text ?? '');
-  const [dictState, setDictState] = useState<DictState>('idle');
-  const [scanState, setScanState] = useState<ScanState>('idle');
-  const [scanError, setScanError] = useState<string | null>(null);
+  const initText = initialNote
+    ? (isTrackTable(initialNote.text) ? trackTableToPlainText(initialNote.text) : initialNote.text)
+    : '';
+
+  const [text,          setText]          = useState(initText);
+  const [dictState,     setDictState]     = useState<DictState>('idle');
+  const [scanState,     setScanState]     = useState<ScanState>('idle');
+  const [scanError,     setScanError]     = useState<string | null>(null);
+  // Structured entries from the last camera scan (shown as cards)
+  const [scannedEntries, setScannedEntries] = useState<TrackEntry[] | null>(
+    initialNote && isTrackTable(initialNote.text) ? parseTrackTable(initialNote.text) : null
+  );
+  // Whether the user wants to see/edit the raw text instead of the cards
+  const [showRawScan,   setShowRawScan]   = useState(false);
   // Tracks whether camera was used so we can save with sourceType 'camera'
-  const usedCameraRef = useRef<boolean>(false);
+  const usedCameraRef = useRef<boolean>(!!initialNote && initialNote.sourceType === 'camera');
 
   const recognitionRef = useRef<any>(null);
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
   // Always-current mirror of `text` for use inside recognition event closures
   // (closures capture stale state; refs always have the live value)
-  const latestTextRef  = useRef<string>(initialNote?.text ?? '');
+  const latestTextRef  = useRef<string>(initText);
   // True while the user has dictation "on" — including across auto-restarts
   const isActiveRef    = useRef<boolean>(false);
   // Guards against state updates after unmount.
@@ -71,11 +82,14 @@ export default function NoteComposer({
     if (!trimmed) return;
     const effectiveSource: Note['sourceType'] =
       usedCameraRef.current ? 'camera' : source;
+    // For the extraction system, save the plain text (strip __TT__ marker).
+    // The displayed table is re-derived from the stored pipe lines on render.
+    const stored = isTrackTable(trimmed) ? trimmed : trimmed;
     if (isEditing) {
-      updateNote(initialNote!.id, trimmed);
+      updateNote(initialNote!.id, stored);
     } else {
-      const noteId = addNote(trimmed, effectiveSource);
-      if (noteId && onNoteSaved) onNoteSaved(noteId, trimmed);
+      const noteId = addNote(stored, effectiveSource);
+      if (noteId && onNoteSaved) onNoteSaved(noteId, stored);
     }
     onClose();
   }, [isEditing, initialNote, addNote, updateNote, onClose, onNoteSaved]);
@@ -261,31 +275,37 @@ export default function NoteComposer({
   // ── Camera scan ───────────────────────────────────────────────────────────
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    // Reset so the same file can be re-selected if needed
-    e.target.value = '';
+    e.target.value = ''; // reset so same file can be re-selected
     if (!file) return;
 
     setScanState('scanning');
     setScanError(null);
 
     try {
-      const scanned = await scanHandwrittenNote(file);
-      // Append to existing text (with a blank line if there's already content)
-      const current = latestTextRef.current.trimEnd();
-      const combined = current ? `${current}\n\n${scanned}` : scanned;
-      const clipped = combined.slice(0, MAX_CHARS);
-      latestTextRef.current = clipped;
-      setText(clipped);
+      const result = await scanHandwrittenNote(file);
+
+      if (result.entries && result.entries.length > 0) {
+        // Table detected — show structured card preview
+        setScannedEntries(result.entries);
+        setShowRawScan(false);
+        latestTextRef.current = result.text;   // stored as __TT__\n... format
+        setText(trackTableToPlainText(result.text)); // textarea shows human-readable text
+      } else {
+        // Plain text — append to textarea
+        const current = latestTextRef.current.trimEnd();
+        const combined = current ? `${current}\n\n${result.text}` : result.text;
+        const clipped = combined.slice(0, MAX_CHARS);
+        latestTextRef.current = clipped;
+        setText(clipped);
+        setScannedEntries(null);
+      }
+
       usedCameraRef.current = true;
       setScanState('idle');
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Scan failed.');
       setScanState('error');
-      // Auto-clear error after 4 s
-      setTimeout(() => {
-        setScanState('idle');
-        setScanError(null);
-      }, 4000);
+      setTimeout(() => { setScanState('idle'); setScanError(null); }, 4000);
     }
   }
 
@@ -298,7 +318,8 @@ export default function NoteComposer({
 
   const charsLeft     = MAX_CHARS - text.length;
   const overLimit     = charsLeft < 0;
-  const canSave       = text.trim().length > 0 && !overLimit;
+  const showCards     = !!scannedEntries && !showRawScan;
+  const canSave       = (showCards ? scannedEntries!.length > 0 : text.trim().length > 0) && !overLimit;
   const dictSupported = !!SR;
 
   return (
@@ -309,29 +330,77 @@ export default function NoteComposer({
     >
       <div className="px-5 py-4 space-y-4">
 
-        {/* ── Textarea ──────────────────────────────────────────────────────── */}
-        <div className="relative">
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={e => {
-              const v = e.target.value.slice(0, MAX_CHARS + 50);
-              latestTextRef.current = v;
-              setText(v);
-            }}
-            placeholder="Type your note here, or tap the mic to dictate…"
-            rows={7}
-            autoFocus={!autoStartDictation}
-            disabled={scanState === 'scanning'}
-            className="w-full border border-slate-300 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-white leading-relaxed disabled:opacity-50"
-            style={{ minHeight: 160 }}
-          />
-          <span className={`absolute bottom-2.5 right-3 text-xs tabular-nums ${
-            overLimit ? 'text-red-500 font-semibold' : 'text-slate-300'
-          }`}>
-            {charsLeft < 200 ? `${charsLeft} left` : ''}
-          </span>
-        </div>
+        {/* ── Scanned entry cards ───────────────────────────────────────────── */}
+        {showCards && scannedEntries && (
+          <div className="space-y-2">
+            {scannedEntries.map((entry, i) => (
+              <div key={i} className="flex gap-3 px-3 py-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                {/* Time */}
+                <span className="text-xs font-bold font-mono text-slate-500 w-14 flex-shrink-0 pt-0.5">
+                  {entry.time || '—'}
+                </span>
+                {/* Body */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap gap-1 mb-0.5">
+                    {entry.condition && (
+                      <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                        {entry.condition}
+                      </span>
+                    )}
+                    {entry.entry && (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                        {entry.entry}
+                      </span>
+                    )}
+                    {!entry.condition && !entry.entry && (
+                      <span className="text-xs text-slate-400 italic">no symptom/condition</span>
+                    )}
+                  </div>
+                  {entry.notes && (
+                    <p className="text-xs text-slate-500 leading-snug">{entry.notes}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {/* Toggle to raw text */}
+            <button
+              type="button"
+              onClick={() => setShowRawScan(true)}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors px-1"
+            >
+              <AlignLeft size={11} />
+              Edit raw text
+            </button>
+          </div>
+        )}
+
+        {/* ── Textarea (plain text / raw edit mode) ─────────────────────────── */}
+        {!showCards && (
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={e => {
+                const v = e.target.value.slice(0, MAX_CHARS + 50);
+                latestTextRef.current = v;
+                setText(v);
+                // If user edits raw text, drop the structured card view
+                setScannedEntries(null);
+              }}
+              placeholder="Type your note here, or tap the mic to dictate…"
+              rows={7}
+              autoFocus={!autoStartDictation && !scannedEntries}
+              disabled={scanState === 'scanning'}
+              className="w-full border border-slate-300 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-white leading-relaxed disabled:opacity-50"
+              style={{ minHeight: 160 }}
+            />
+            <span className={`absolute bottom-2.5 right-3 text-xs tabular-nums ${
+              overLimit ? 'text-red-500 font-semibold' : 'text-slate-300'
+            }`}>
+              {charsLeft < 200 ? `${charsLeft} left` : ''}
+            </span>
+          </div>
+        )}
 
         {/* ── Status banners ────────────────────────────────────────────────── */}
         {scanState === 'scanning' && (

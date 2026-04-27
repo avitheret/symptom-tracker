@@ -1,14 +1,68 @@
 /**
- * Scan a handwritten note image via Claude Vision (routed through the
- * existing claude-proxy Netlify function). Returns the transcribed text.
+ * Scan a handwritten note image via Claude Vision (claude-proxy).
+ * Returns structured track entries when the image contains a tracking table,
+ * or plain transcribed text otherwise.
  */
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface TrackEntry {
+  time:      string;   // e.g. "8:23am"
+  condition: string;   // e.g. "migraine"  (may be empty)
+  entry:     string;   // symptom / med / supplement name
+  notes:     string;   // free text
+}
+
+export interface ScanResult {
+  /** Pipe-formatted text stored in the Note (human-readable) */
+  text:     string;
+  /** Structured rows — present when a tracking table was detected */
+  entries?: TrackEntry[];
+}
+
+// ── Serialisation helpers ─────────────────────────────────────────────────────
+
+const TABLE_MARKER = '__TT__';
+
+/** Serialise entries to the stored pipe format: "__TT__\ntime | cond | entry | notes\n…" */
+export function entriesToText(entries: TrackEntry[]): string {
+  const rows = entries
+    .filter(e => e.time || e.condition || e.entry || e.notes)
+    .map(e => `${e.time} | ${e.condition} | ${e.entry} | ${e.notes}`);
+  return `${TABLE_MARKER}\n${rows.join('\n')}`;
+}
+
+/** Returns true when the note was created from a scanned tracking table. */
+export function isTrackTable(text: string): boolean {
+  return text.startsWith(TABLE_MARKER);
+}
+
+/** Parse the stored pipe lines back into structured entries. */
+export function parseTrackTable(text: string): TrackEntry[] {
+  const body = text.startsWith(TABLE_MARKER)
+    ? text.slice(TABLE_MARKER.length + 1)
+    : text;
+
+  return body
+    .split('\n')
+    .filter(l => l.trim() && (l.match(/\|/g) ?? []).length >= 1)
+    .map(l => {
+      const [time = '', condition = '', entry = '', ...rest] = l.split('|').map(s => s.trim());
+      return { time, condition, entry, notes: rest.join(' | ') };
+    })
+    .filter(e => e.time || e.condition || e.entry || e.notes);
+}
+
+/** Human-readable text for extraction / note preview (strips the marker). */
+export function trackTableToPlainText(text: string): string {
+  if (!isTrackTable(text)) return text;
+  return parseTrackTable(text)
+    .map(e => [e.time, e.condition, e.entry, e.notes].filter(Boolean).join(' — '))
+    .join('\n');
+}
 
 // ── Image compression ─────────────────────────────────────────────────────────
 
-/**
- * Shrink an image to fit within `maxPx` on the longest side, encode as JPEG,
- * and return the raw base64 string (no data-URL prefix).
- */
 function compressToBase64(file: File, maxPx = 1200, quality = 0.85): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -16,37 +70,23 @@ function compressToBase64(file: File, maxPx = 1200, quality = 0.85): Promise<str
 
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
-
       const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width  = Math.round(img.width  * scale);
       canvas.height = Math.round(img.height * scale);
-
       const ctx = canvas.getContext('2d');
       if (!ctx) { reject(new Error('Canvas not available')); return; }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      // Always output JPEG for consistent size/quality
-      const dataUrl = canvas.toDataURL('image/jpeg', quality);
-      resolve(dataUrl.split(',')[1]); // strip "data:image/jpeg;base64," prefix
+      resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]);
     };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Failed to load image'));
-    };
-
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Failed to load image')); };
     img.src = objectUrl;
   });
 }
 
 // ── Claude Vision call ────────────────────────────────────────────────────────
 
-/**
- * Send the image to Claude Vision (via claude-proxy) and return the
- * transcribed handwritten text. Throws on network or API error.
- */
-export async function scanHandwrittenNote(file: File): Promise<string> {
+export async function scanHandwrittenNote(file: File): Promise<ScanResult> {
   const base64 = await compressToBase64(file);
 
   const res = await fetch('/.netlify/functions/claude-proxy', {
@@ -55,29 +95,24 @@ export async function scanHandwrittenNote(file: File): Promise<string> {
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
-      system:
-        'You transcribe handwritten text from photos. ' +
-        'Return ONLY the transcribed text, preserving line breaks. ' +
-        'If no legible text is found, reply with exactly: [no text found]',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: 'image/jpeg',
-                data: base64,
-              },
-            },
-            {
-              type: 'text',
-              text: 'Please transcribe all handwritten text from this image.',
-            },
-          ],
-        },
-      ],
+      system: [
+        'You read handwritten health tracking forms.',
+        'The form has 4 columns: Time | Condition | Symptom/Med/Sup | Notes.',
+        '',
+        'If the image contains a tracking table, return ONLY a JSON array — no prose, no markdown:',
+        '[{"time":"8:23am","condition":"migraine","entry":"dizziness","notes":"lasted an hour"}]',
+        'Rules: skip header rows and separator lines. Use empty strings for blank cells.',
+        '',
+        'If the image is plain handwritten text (not a table), return the text prefixed with TEXT: (no JSON).',
+        'If nothing legible: return TEXT:[no text found]',
+      ].join('\n'),
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+          { type: 'text', text: 'Please read this handwritten note.' },
+        ],
+      }],
     }),
   });
 
@@ -87,11 +122,25 @@ export async function scanHandwrittenNote(file: File): Promise<string> {
   }
 
   const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-  const text = data.content?.find(b => b.type === 'text')?.text?.trim() ?? '';
+  const raw = data.content?.find(b => b.type === 'text')?.text?.trim() ?? '';
 
-  if (!text || text === '[no text found]') {
-    throw new Error('No legible text found in the image.');
+  // ── Plain text response ────────────────────────────────────────────────────
+  if (raw.startsWith('TEXT:')) {
+    const plain = raw.slice(5).trim();
+    if (!plain || plain === '[no text found]') throw new Error('No legible text found in the image.');
+    return { text: plain };
   }
 
-  return text;
+  // ── JSON table response ────────────────────────────────────────────────────
+  try {
+    const entries = JSON.parse(raw) as TrackEntry[];
+    if (!Array.isArray(entries) || entries.length === 0) throw new Error('Empty table');
+    const validEntries = entries.filter(e => e.time || e.condition || e.entry || e.notes);
+    if (validEntries.length === 0) throw new Error('No legible text found in the image.');
+    return { text: entriesToText(validEntries), entries: validEntries };
+  } catch {
+    // Claude returned something else — treat as plain text
+    if (!raw) throw new Error('No legible text found in the image.');
+    return { text: raw };
+  }
 }

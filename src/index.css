@@ -296,6 +296,12 @@ input[type="range"]::-moz-range-thumb {
    ═══════════════════════════════════════════════════════════════ */
 
 @media print {
+  /* ── Track Notes form ──────────────────────────────────────────────────── */
+  /* When TrackNotesPrintForm is open, hide everything except the form portal */
+  body.printing-track-form > *:not(.track-form-print-root) { display: none !important; }
+  body.printing-track-form .track-form-print-root { display: block !important; }
+
+  /* ── Doctor report / default print ─────────────────────────────────────── */
   header, footer, nav, .no-print, button { display: none !important; }
   body { background: white; font-family: Georgia, serif; font-size: 11pt; color: #000; }
   #doctor-report { display: block !important; padding: 0.5in 0.75in; }

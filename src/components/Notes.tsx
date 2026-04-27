@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { Mic, PenLine, Trash2, Edit2, ClipboardList, Notebook, Sparkles, Check, Link2, Camera, Printer } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
+import { isTrackTable, parseTrackTable } from '../utils/scanNote';
 import type { Note } from '../types';
 import { Sheet } from './ui';
 import NoteComposer from './NoteComposer';
+import TrackNotesPrintForm from './TrackNotesPrintForm';
 
 interface Props {
   onNewNote:        () => void;
@@ -75,19 +77,53 @@ function NoteDetailSheet({ note, onClose, onEdit, onDelete, onLogFromNote, onExt
 
         {/* Note body */}
         <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-4 min-h-[120px]">
+          {/* Source badge */}
           {note.sourceType === 'voice' && (
-            <div className="flex items-center gap-1.5 mb-2">
+            <div className="flex items-center gap-1.5 mb-3">
               <Mic size={12} className="text-amber-600" />
               <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Voice note</span>
             </div>
           )}
           {note.sourceType === 'camera' && (
-            <div className="flex items-center gap-1.5 mb-2">
+            <div className="flex items-center gap-1.5 mb-3">
               <Camera size={12} className="text-amber-600" />
               <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Scanned note</span>
             </div>
           )}
-          <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">{note.text}</p>
+
+          {/* Table note → entry cards */}
+          {isTrackTable(note.text) ? (
+            <div className="space-y-2">
+              {parseTrackTable(note.text).map((entry, i) => (
+                <div key={i} className="flex gap-3 bg-white rounded-xl px-3 py-2 border border-amber-100">
+                  <span className="text-xs font-bold font-mono text-slate-500 w-14 flex-shrink-0 pt-0.5">
+                    {entry.time || '—'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap gap-1 mb-0.5">
+                      {entry.condition && (
+                        <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                          {entry.condition}
+                        </span>
+                      )}
+                      {entry.entry && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                          {entry.entry}
+                        </span>
+                      )}
+                    </div>
+                    {entry.notes && (
+                      <p className="text-xs text-slate-500 leading-snug">{entry.notes}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Plain text note */
+            <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">{note.text}</p>
+          )}
+
           {note.updatedAt && (
             <p className="text-xs text-slate-400 mt-3">Edited {formatDetailDate(note.updatedAt)}</p>
           )}
@@ -184,8 +220,9 @@ function NoteDetailSheet({ note, onClose, onEdit, onDelete, onLogFromNote, onExt
 // ── Main Notes view ──────────────────────────────────────────────────────────
 export default function Notes({ onNewNote, onLogFromNote, onExtractFromNote }: Props) {
   const { state, deleteNote } = useApp();
-  const [selectedNote, setSelectedNote]   = useState<Note | null>(null);
-  const [editingNote,  setEditingNote]    = useState<Note | null>(null);
+  const [selectedNote,  setSelectedNote]  = useState<Note | null>(null);
+  const [editingNote,   setEditingNote]   = useState<Note | null>(null);
+  const [showPrintForm, setShowPrintForm] = useState(false);
 
   const notes = useMemo(() => {
     return [...state.notes]
@@ -205,22 +242,20 @@ export default function Notes({ onNewNote, onLogFromNote, onExtractFromNote }: P
           )}
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href="/track-form.html"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => setShowPrintForm(true)}
             aria-label="Print tracking form"
             className="flex items-center justify-center w-10 h-10 rounded-xl border border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 bg-white active:scale-95 transition-all"
           >
             <Printer size={16} />
-          </a>
-        <button
-          onClick={onNewNote}
-          className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl min-h-[44px] active:scale-95 transition-transform shadow-sm"
-        >
-          <PenLine size={15} />
-          New Note
-        </button>
+          </button>
+          <button
+            onClick={onNewNote}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl min-h-[44px] active:scale-95 transition-transform shadow-sm"
+          >
+            <PenLine size={15} />
+            New Note
+          </button>
         </div>
       </div>
 
@@ -324,6 +359,11 @@ export default function Notes({ onNewNote, onLogFromNote, onExtractFromNote }: P
           initialNote={editingNote}
           onClose={() => setEditingNote(null)}
         />
+      )}
+
+      {/* Print form overlay */}
+      {showPrintForm && (
+        <TrackNotesPrintForm onClose={() => setShowPrintForm(false)} />
       )}
 
     </div>
