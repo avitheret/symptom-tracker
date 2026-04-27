@@ -7,10 +7,11 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface TrackEntry {
-  time:      string;   // e.g. "8:23am"
-  condition: string;   // e.g. "migraine"  (may be empty)
-  entry:     string;   // symptom / med / supplement name
-  notes:     string;   // free text
+  time:              string;   // e.g. "8:23am"
+  condition:         string;   // e.g. "migraine"  (may be empty)
+  entry:             string;   // symptom / med / supplement name
+  notes:             string;   // free text
+  conditionGuessed?: boolean;  // true when condition was inferred from symptom history
 }
 
 export interface ScanResult {
@@ -67,7 +68,6 @@ function compressToBase64(file: File, maxPx = 1200, quality = 0.85): Promise<str
   return new Promise((resolve, reject) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
-
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
       const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
@@ -86,20 +86,40 @@ function compressToBase64(file: File, maxPx = 1200, quality = 0.85): Promise<str
 
 // ── Response parsing helpers ──────────────────────────────────────────────────
 
-/**
- * Extract the first [...] JSON array substring from a string that may contain
- * surrounding prose or markdown code fences.
- */
-function extractJsonArray(text: string): string | null {
-  const start = text.indexOf('[');
-  const end   = text.lastIndexOf(']');
-  if (start === -1 || end === -1 || end < start) return null;
-  return text.slice(start, end + 1);
-}
+/** Try multiple strategies to parse entries from a (possibly messy) Claude response. */
+function parseEntries(raw: string): TrackEntry[] | null {
+  // Strategy 1: direct JSON parse (Claude obeyed the prefill and returned valid continuation)
+  for (const candidate of [raw, '[' + raw, raw.trim()]) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') {
+        return parsed as TrackEntry[];
+      }
+    } catch { /* try next */ }
+  }
 
-/** Strip markdown code fences (```json ... ``` or ``` ... ```) from a string. */
-function stripFences(text: string): string {
-  return text.replace(/^```[\w]*\n?/m, '').replace(/\n?```$/m, '').trim();
+  // Strategy 2: find the outermost [...] in the string
+  const start = raw.indexOf('[');
+  const end   = raw.lastIndexOf(']');
+  if (start !== -1 && end > start) {
+    try {
+      const parsed = JSON.parse(raw.slice(start, end + 1));
+      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') {
+        return parsed as TrackEntry[];
+      }
+    } catch { /* fall through */ }
+  }
+
+  // Strategy 3: Claude omitted the outer [] — wrap and try again
+  const stripped = raw.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '').trim();
+  if (stripped.startsWith('{')) {
+    try {
+      const parsed = JSON.parse('[' + stripped.replace(/,\s*$/, '') + ']');
+      if (Array.isArray(parsed)) return parsed as TrackEntry[];
+    } catch { /* fall through */ }
+  }
+
+  return null;
 }
 
 // ── Claude Vision call ────────────────────────────────────────────────────────
@@ -113,24 +133,40 @@ export async function scanHandwrittenNote(file: File): Promise<ScanResult> {
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
+      // System: table → continue JSON array; plain text → special sentinel
       system: [
         'You read handwritten health tracking forms.',
         'The form has 4 columns: Time | Condition | Symptom/Med/Sup | Notes.',
         '',
-        'If the image contains a tracking table, return ONLY a JSON array — no prose, no markdown:',
-        '[{"time":"8:23am","condition":"migraine","entry":"dizziness","notes":"lasted an hour"}]',
-        'Rules: skip header rows and separator lines. Use empty strings for blank cells.',
+        'Your response MUST start immediately after the opening "[" that was already output.',
         '',
-        'If the image is plain handwritten text (not a table), return the text prefixed with TEXT: (no JSON).',
-        'If nothing legible: return TEXT:[no text found]',
+        'If the image is a tracking table:',
+        '  Output each row as a JSON object, ending the array with ]:',
+        '  {"time":"8:30","condition":"migraine","entry":"dizziness","notes":"lasted 1h"},',
+        '  {"time":"10:00","condition":"","entry":"nausea","notes":""}]',
+        '  Skip header rows and separator lines. Empty cells → empty string.',
+        '',
+        'If the image is plain handwritten text (no table columns):',
+        '  Output exactly: "TEXT","the transcribed text here"]',
+        '',
+        'If nothing is legible:',
+        '  Output exactly: "TEXT","[no text found]"]',
       ].join('\n'),
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-          { type: 'text', text: 'Please read this handwritten note.' },
-        ],
-      }],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+            { type: 'text', text: 'Read this image.' },
+          ],
+        },
+        // Assistant prefill — forces Claude to start its response with [
+        // so we always get a JSON array structure back.
+        {
+          role: 'assistant',
+          content: '[',
+        },
+      ],
     }),
   });
 
@@ -140,33 +176,38 @@ export async function scanHandwrittenNote(file: File): Promise<ScanResult> {
   }
 
   const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-  const raw = data.content?.find(b => b.type === 'text')?.text?.trim() ?? '';
+  // Claude's response continues from the "[" we prefilled, so prepend it back.
+  const raw = '[' + (data.content?.find(b => b.type === 'text')?.text?.trim() ?? '');
 
-  // ── Plain text response ────────────────────────────────────────────────────
-  if (raw.startsWith('TEXT:')) {
-    const plain = raw.slice(5).trim();
+  // ── Check for plain-text sentinel ─────────────────────────────────────────
+  // Matches: ["TEXT","..."] or ["TEXT:","..."]
+  const plainMatch = raw.match(/^\["TEXT:?",\s*"([\s\S]*)"\]$/);
+  if (plainMatch) {
+    const plain = plainMatch[1].trim();
     if (!plain || plain === '[no text found]') throw new Error('No legible text found in the image.');
     return { text: plain };
   }
 
-  // ── JSON table response ────────────────────────────────────────────────────
-  // Claude sometimes wraps JSON in prose or markdown fences despite instructions.
-  // Extract the first [...] array from anywhere in the response.
-  const jsonArray = extractJsonArray(raw);
-  if (jsonArray) {
-    try {
-      const entries = JSON.parse(jsonArray) as TrackEntry[];
-      if (Array.isArray(entries) && entries.length > 0) {
-        const validEntries = entries.filter(e => e.time || e.condition || e.entry || e.notes);
-        if (validEntries.length > 0) {
-          return { text: entriesToText(validEntries), entries: validEntries };
-        }
-      }
-    } catch { /* fall through to plain text */ }
+  // Also handle legacy TEXT: prefix (no prefill, old format)
+  if (raw.startsWith('[TEXT:') || raw === '[') {
+    const legacy = raw.replace(/^\[TEXT:\s*/,'').trim();
+    if (!legacy || legacy === '[no text found]') throw new Error('No legible text found in the image.');
+    return { text: legacy };
   }
 
-  // Final fallback: plain text (strip markdown fences if present)
-  const plain = stripFences(raw);
-  if (!plain) throw new Error('No legible text found in the image.');
-  return { text: plain };
+  // ── Parse as tracking table entries ───────────────────────────────────────
+  const entries = parseEntries(raw);
+  if (entries) {
+    const valid = entries.filter(e =>
+      e && typeof e === 'object' && (e.time || e.condition || e.entry || e.notes)
+    );
+    if (valid.length > 0) {
+      return { text: entriesToText(valid), entries: valid };
+    }
+  }
+
+  // ── Final fallback: plain text ─────────────────────────────────────────────
+  const fallback = raw.replace(/^\[/, '').replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '').trim();
+  if (!fallback) throw new Error('No legible text found in the image.');
+  return { text: fallback };
 }

@@ -102,8 +102,12 @@ function NoteDetailSheet({ note, onClose, onEdit, onDelete, onLogFromNote, onExt
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap gap-1 mb-0.5">
                       {entry.condition && (
-                        <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
-                          {entry.condition}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          entry.conditionGuessed
+                            ? 'bg-violet-50 text-violet-500 italic border border-violet-200'
+                            : 'bg-violet-100 text-violet-700'
+                        }`}>
+                          {entry.conditionGuessed ? `~${entry.condition}` : entry.condition}
                         </span>
                       )}
                       {entry.entry && (

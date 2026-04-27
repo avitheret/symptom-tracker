@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, MicOff, PenLine, Camera, Loader2, AlignLeft } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { getSpeechRecognition } from '../utils/speech';
-import { scanHandwrittenNote, isTrackTable, parseTrackTable, trackTableToPlainText } from '../utils/scanNote';
+import { scanHandwrittenNote, entriesToText, isTrackTable, parseTrackTable, trackTableToPlainText } from '../utils/scanNote';
 import type { TrackEntry } from '../utils/scanNote';
 import type { Note } from '../types';
 import { Sheet, Button } from './ui';
@@ -35,10 +35,41 @@ function dlog(...args: unknown[]) {
   if (DICT_DEBUG) console.log('[Dictation]', ...args);
 }
 
+// ── Condition guessing ────────────────────────────────────────────────────────
+
+/**
+ * For entries with no condition, try to infer one from the user's symptom
+ * tracking history. Marks matched entries with conditionGuessed = true.
+ */
+function guessConditions(
+  entries: TrackEntry[],
+  state: ReturnType<typeof useApp>['state'],
+): TrackEntry[] {
+  // Build symptom → condition map from the patient's tracking history
+  const map = new Map<string, string>();
+  for (const e of state.entries ?? []) {
+    if (e.patientId === state.activePatientId && e.symptomName && e.conditionName) {
+      map.set(e.symptomName.toLowerCase(), e.conditionName);
+    }
+  }
+  if (map.size === 0) return entries;
+
+  return entries.map(entry => {
+    if (entry.condition || !entry.entry) return entry;
+    const needle = entry.entry.toLowerCase();
+    for (const [symptom, condition] of map) {
+      if (needle.includes(symptom) || symptom.includes(needle)) {
+        return { ...entry, condition, conditionGuessed: true };
+      }
+    }
+    return entry;
+  });
+}
+
 export default function NoteComposer({
   onClose, initialNote, autoStartDictation, onDictationStart, onDictationEnd, onNoteSaved,
 }: Props) {
-  const { addNote, updateNote } = useApp();
+  const { addNote, updateNote, state } = useApp();
   const isEditing = !!initialNote;
 
   const initText = initialNote
@@ -285,11 +316,14 @@ export default function NoteComposer({
       const result = await scanHandwrittenNote(file);
 
       if (result.entries && result.entries.length > 0) {
-        // Table detected — show structured card preview
-        setScannedEntries(result.entries);
+        // Table detected — guess missing conditions from symptom history
+        const enriched = guessConditions(result.entries, state);
+        setScannedEntries(enriched);
         setShowRawScan(false);
-        latestTextRef.current = result.text;   // stored as __TT__\n... format
-        setText(trackTableToPlainText(result.text)); // textarea shows human-readable text
+        // Re-serialise with guessed conditions filled in
+        const enrichedText = entriesToText(enriched);
+        latestTextRef.current = enrichedText;
+        setText(trackTableToPlainText(enrichedText));
       } else {
         // Plain text — append to textarea
         const current = latestTextRef.current.trimEnd();
@@ -343,8 +377,12 @@ export default function NoteComposer({
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap gap-1 mb-0.5">
                     {entry.condition && (
-                      <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
-                        {entry.condition}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        entry.conditionGuessed
+                          ? 'bg-violet-50 text-violet-500 italic border border-violet-200'
+                          : 'bg-violet-100 text-violet-700'
+                      }`}>
+                        {entry.conditionGuessed ? `~${entry.condition}` : entry.condition}
                       </span>
                     )}
                     {entry.entry && (
