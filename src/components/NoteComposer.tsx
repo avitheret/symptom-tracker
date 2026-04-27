@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, PenLine } from 'lucide-react';
+import { Mic, MicOff, PenLine, Camera, Loader2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { getSpeechRecognition } from '../utils/speech';
+import { scanHandwrittenNote } from '../utils/scanNote';
 import type { Note } from '../types';
 import { Sheet, Button } from './ui';
 
@@ -18,6 +19,7 @@ interface Props {
 }
 
 type DictState = 'idle' | 'listening' | 'error';
+type ScanState = 'idle' | 'scanning' | 'error';
 
 const SR = getSpeechRecognition();
 
@@ -40,9 +42,14 @@ export default function NoteComposer({
 
   const [text,      setText]      = useState(initialNote?.text ?? '');
   const [dictState, setDictState] = useState<DictState>('idle');
+  const [scanState, setScanState] = useState<ScanState>('idle');
+  const [scanError, setScanError] = useState<string | null>(null);
+  // Tracks whether camera was used so we can save with sourceType 'camera'
+  const usedCameraRef = useRef<boolean>(false);
 
   const recognitionRef = useRef<any>(null);
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef   = useRef<HTMLInputElement>(null);
   // Always-current mirror of `text` for use inside recognition event closures
   // (closures capture stale state; refs always have the live value)
   const latestTextRef  = useRef<string>(initialNote?.text ?? '');
@@ -62,10 +69,12 @@ export default function NoteComposer({
   const commitSave = useCallback((source: 'voice' | 'typed') => {
     const trimmed = latestTextRef.current.trim();
     if (!trimmed) return;
+    const effectiveSource: Note['sourceType'] =
+      usedCameraRef.current ? 'camera' : source;
     if (isEditing) {
       updateNote(initialNote!.id, trimmed);
     } else {
-      const noteId = addNote(trimmed, source);
+      const noteId = addNote(trimmed, effectiveSource);
       if (noteId && onNoteSaved) onNoteSaved(noteId, trimmed);
     }
     onClose();
@@ -249,6 +258,37 @@ export default function NoteComposer({
     };
   }, []);
 
+  // ── Camera scan ───────────────────────────────────────────────────────────
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Reset so the same file can be re-selected if needed
+    e.target.value = '';
+    if (!file) return;
+
+    setScanState('scanning');
+    setScanError(null);
+
+    try {
+      const scanned = await scanHandwrittenNote(file);
+      // Append to existing text (with a blank line if there's already content)
+      const current = latestTextRef.current.trimEnd();
+      const combined = current ? `${current}\n\n${scanned}` : scanned;
+      const clipped = combined.slice(0, MAX_CHARS);
+      latestTextRef.current = clipped;
+      setText(clipped);
+      usedCameraRef.current = true;
+      setScanState('idle');
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : 'Scan failed.');
+      setScanState('error');
+      // Auto-clear error after 4 s
+      setTimeout(() => {
+        setScanState('idle');
+        setScanError(null);
+      }, 4000);
+    }
+  }
+
   // ── Manual save (button) ───────────────────────────────────────────────────
   function handleSave() {
     const wasListening = isActiveRef.current;
@@ -282,7 +322,8 @@ export default function NoteComposer({
             placeholder="Type your note here, or tap the mic to dictate…"
             rows={7}
             autoFocus={!autoStartDictation}
-            className="w-full border border-slate-300 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-white leading-relaxed"
+            disabled={scanState === 'scanning'}
+            className="w-full border border-slate-300 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-white leading-relaxed disabled:opacity-50"
             style={{ minHeight: 160 }}
           />
           <span className={`absolute bottom-2.5 right-3 text-xs tabular-nums ${
@@ -292,14 +333,25 @@ export default function NoteComposer({
           </span>
         </div>
 
-        {/* ── Dictation status ──────────────────────────────────────────────── */}
-        {dictState === 'listening' && (
+        {/* ── Status banners ────────────────────────────────────────────────── */}
+        {scanState === 'scanning' && (
+          <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+            <Loader2 size={15} className="animate-spin flex-shrink-0" />
+            <span>Reading handwriting…</span>
+          </div>
+        )}
+        {scanState === 'error' && scanError && (
+          <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+            {scanError}
+          </p>
+        )}
+        {dictState === 'listening' && scanState === 'idle' && (
           <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
             <span>Listening… say <strong>"save note"</strong> when done</span>
           </div>
         )}
-        {dictState === 'error' && (
+        {dictState === 'error' && scanState === 'idle' && (
           <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
             Microphone unavailable. Please check permissions.
           </p>
@@ -308,12 +360,35 @@ export default function NoteComposer({
         {/* ── Action buttons ────────────────────────────────────────────────── */}
         <div className="flex gap-2.5 pb-safe">
 
+          {/* Hidden file input — triggers camera / photo picker */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileSelected}
+          />
+
+          {/* Camera scan button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={scanState === 'scanning' || dictState === 'listening'}
+            className="flex items-center justify-center w-12 h-12 rounded-xl border border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-600 bg-white transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Scan handwritten note"
+          >
+            {scanState === 'scanning'
+              ? <Loader2 size={18} className="animate-spin" />
+              : <Camera size={18} />}
+          </button>
+
           {/* Mic toggle */}
           {dictSupported && (
             <button
               type="button"
               onClick={dictState === 'listening' ? stopDictation : startDictation}
-              className={`flex items-center justify-center w-12 h-12 rounded-xl border transition-colors flex-shrink-0 ${
+              disabled={scanState === 'scanning'}
+              className={`flex items-center justify-center w-12 h-12 rounded-xl border transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${
                 dictState === 'listening'
                   ? 'bg-red-500 border-red-500 text-white'
                   : 'border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-600 bg-white'
@@ -338,7 +413,7 @@ export default function NoteComposer({
             type="button"
             variant="primary"
             size="lg"
-            disabled={!canSave}
+            disabled={!canSave || scanState === 'scanning'}
             onClick={handleSave}
             className="flex-1"
           >

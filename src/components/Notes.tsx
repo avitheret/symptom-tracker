@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Mic, PenLine, Trash2, Edit2, ClipboardList, Notebook, Sparkles, Check, Link2 } from 'lucide-react';
+import { Mic, PenLine, Trash2, Edit2, ClipboardList, Notebook, Sparkles, Check, Link2, Camera } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import type { Note } from '../types';
 import { Sheet } from './ui';
@@ -79,6 +79,12 @@ function NoteDetailSheet({ note, onClose, onEdit, onDelete, onLogFromNote, onExt
             <div className="flex items-center gap-1.5 mb-2">
               <Mic size={12} className="text-amber-600" />
               <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Voice note</span>
+            </div>
+          )}
+          {note.sourceType === 'camera' && (
+            <div className="flex items-center gap-1.5 mb-2">
+              <Camera size={12} className="text-amber-600" />
+              <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Scanned note</span>
             </div>
           )}
           <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">{note.text}</p>
@@ -243,7 +249,9 @@ export default function Notes({ onNewNote, onLogFromNote, onExtractFromNote }: P
                 <div className="flex-shrink-0 w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center mt-0.5">
                   {note.sourceType === 'voice'
                     ? <Mic size={14} className="text-amber-500" />
-                    : <PenLine size={14} className="text-amber-500" />
+                    : note.sourceType === 'camera'
+                      ? <Camera size={14} className="text-amber-500" />
+                      : <PenLine size={14} className="text-amber-500" />
                   }
                 </div>
                 {/* Content */}
@@ -259,6 +267,12 @@ export default function Notes({ onNewNote, onLogFromNote, onExtractFromNote }: P
                     {note.sourceType === 'voice' && (
                       <span className="text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-medium">
                         Voice
+                      </span>
+                    )}
+                    {note.sourceType === 'camera' && (
+                      <span className="text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
+                        <Camera size={9} />
+                        Scanned
                       </span>
                     )}
                     {note.extractionStatus === 'confirmed' && (

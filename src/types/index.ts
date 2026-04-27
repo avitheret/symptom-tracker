@@ -183,7 +183,7 @@ export interface Note {
   text: string;
   createdAt: number;
   updatedAt?: number;
-  sourceType: 'typed' | 'voice';
+  sourceType: 'typed' | 'voice' | 'camera';
   extractionStatus?: ExtractionStatus;
   extractedAt?: number;
   linkedLogIds?: string[];
