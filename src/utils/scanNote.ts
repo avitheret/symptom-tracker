@@ -84,6 +84,24 @@ function compressToBase64(file: File, maxPx = 1200, quality = 0.85): Promise<str
   });
 }
 
+// ── Response parsing helpers ──────────────────────────────────────────────────
+
+/**
+ * Extract the first [...] JSON array substring from a string that may contain
+ * surrounding prose or markdown code fences.
+ */
+function extractJsonArray(text: string): string | null {
+  const start = text.indexOf('[');
+  const end   = text.lastIndexOf(']');
+  if (start === -1 || end === -1 || end < start) return null;
+  return text.slice(start, end + 1);
+}
+
+/** Strip markdown code fences (```json ... ``` or ``` ... ```) from a string. */
+function stripFences(text: string): string {
+  return text.replace(/^```[\w]*\n?/m, '').replace(/\n?```$/m, '').trim();
+}
+
 // ── Claude Vision call ────────────────────────────────────────────────────────
 
 export async function scanHandwrittenNote(file: File): Promise<ScanResult> {
@@ -132,15 +150,23 @@ export async function scanHandwrittenNote(file: File): Promise<ScanResult> {
   }
 
   // ── JSON table response ────────────────────────────────────────────────────
-  try {
-    const entries = JSON.parse(raw) as TrackEntry[];
-    if (!Array.isArray(entries) || entries.length === 0) throw new Error('Empty table');
-    const validEntries = entries.filter(e => e.time || e.condition || e.entry || e.notes);
-    if (validEntries.length === 0) throw new Error('No legible text found in the image.');
-    return { text: entriesToText(validEntries), entries: validEntries };
-  } catch {
-    // Claude returned something else — treat as plain text
-    if (!raw) throw new Error('No legible text found in the image.');
-    return { text: raw };
+  // Claude sometimes wraps JSON in prose or markdown fences despite instructions.
+  // Extract the first [...] array from anywhere in the response.
+  const jsonArray = extractJsonArray(raw);
+  if (jsonArray) {
+    try {
+      const entries = JSON.parse(jsonArray) as TrackEntry[];
+      if (Array.isArray(entries) && entries.length > 0) {
+        const validEntries = entries.filter(e => e.time || e.condition || e.entry || e.notes);
+        if (validEntries.length > 0) {
+          return { text: entriesToText(validEntries), entries: validEntries };
+        }
+      }
+    } catch { /* fall through to plain text */ }
   }
+
+  // Final fallback: plain text (strip markdown fences if present)
+  const plain = stripFences(raw);
+  if (!plain) throw new Error('No legible text found in the image.');
+  return { text: plain };
 }
