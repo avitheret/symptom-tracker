@@ -14,11 +14,12 @@ import MedScheduleWidget from './MedScheduleWidget';
 import SupplementScheduleWidget from './SupplementScheduleWidget';
 import DashboardRemindersCard from './DashboardRemindersCard';
 import DashboardCustomizer from './DashboardCustomizer';
+import HealthMetricsCard from './HealthMetricsCard';
 import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState } from './ui';
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.22.2';
+const APP_VERSION = 'v3.23.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -66,6 +67,12 @@ function loadPrefs(): WidgetId[] {
         const medIdx = saved.indexOf('medSchedule');
         if (medIdx >= 0) saved.splice(medIdx + 1, 0, 'supplements');
         else saved.push('supplements');
+      }
+      // Migration: add healthKit if missing (new widget in v3.23.0)
+      if (!saved.includes('healthKit')) {
+        const weatherIdx = saved.indexOf('weather');
+        if (weatherIdx >= 0) saved.splice(weatherIdx + 1, 0, 'healthKit');
+        else saved.unshift('healthKit');
       }
       localStorage.setItem(PREFS_KEY, JSON.stringify(saved));
       return saved;
@@ -769,6 +776,9 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
                 onAddSchedule={onOpenSupplementSchedule ?? (() => {})}
               />
             );
+
+          case 'healthKit':
+            return <HealthMetricsCard key="healthKit" />;
 
           case 'quickActions':
             return (

@@ -55,6 +55,8 @@ export function useCloudStateSync() {
     supplementSchedules:  state.supplementSchedules,
     notificationPrefs:    state.notificationPrefs,
     reminders:            state.reminders,
+    // HealthKit API key is small and should sync across devices
+    healthkitApiKey:      state.healthkitApiKey,
   });
 
   // ── Pull ────────────────────────────────────────────────────────────────────
@@ -160,6 +162,7 @@ export function useCloudStateSync() {
     state.supplementSchedules,
     state.notificationPrefs,
     state.reminders,
+    state.healthkitApiKey,
   ]);
 
   // ── On app focus/restore: pull if cloud is newer ────────────────────────────

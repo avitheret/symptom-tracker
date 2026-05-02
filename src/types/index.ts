@@ -131,7 +131,7 @@ export interface DailyCheckIn {
 
 // ── Dashboard Widgets ───────────────────────────────────────────────────────
 
-export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'recentMeals' | 'medSchedule' | 'supplements' | 'weather';
+export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'recentMeals' | 'medSchedule' | 'supplements' | 'weather' | 'healthKit';
 
 export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string }> = {
   stats:        { label: 'Summary Stats',    description: 'Total entries, weekly count, average severity' },
@@ -147,9 +147,10 @@ export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string 
   medSchedule:  { label: 'Meds Schedule',   description: 'Upcoming medication doses & reminders' },
   supplements:  { label: 'Supplements',    description: 'Daily supplement schedule with dose tracking' },
   weather:      { label: 'Weather Tracker', description: 'Auto-track pressure, humidity, storms — migraine triggers' },
+  healthKit:    { label: 'Apple Health',    description: 'Sleep, Heart Rate, Steps, HRV & Blood Pressure from iPhone' },
 };
 
-export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentMeals', 'recentLog', 'medSchedule', 'supplements'];
+export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'healthKit', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentMeals', 'recentLog', 'medSchedule', 'supplements'];
 
 // ── Existing analytics types ─────────────────────────────────────────────────
 
@@ -450,6 +451,26 @@ export interface ContributingFactorsResult {
   totalEntries: number;
   confidence: Confidence;
   disclaimer: string;
+}
+
+// ── HealthKit Metrics ─────────────────────────────────────────────────────────
+
+export type HealthMetricType =
+  | 'sleep_hours'
+  | 'resting_hr'
+  | 'steps'
+  | 'hrv'
+  | 'systolic_bp'
+  | 'diastolic_bp';
+
+export interface HealthMetric {
+  id: string;
+  date: string;            // YYYY-MM-DD
+  type: HealthMetricType;
+  value: number;
+  unit: string;
+  source: string;
+  createdAt: number;
 }
 
 // ── AI Insights ──────────────────────────────────────────────────────────────

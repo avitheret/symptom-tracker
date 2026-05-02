@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback } 
 import type {
   AIInsight, Condition, DailyCheckIn, ExtractionResult, ExtractionStatus,
   ExtractedCheckIn, ExtractedMedication, ExtractedSupplement, ExtractedSymptom, ExtractedTrigger,
-  FoodLog, MedicationLog, MedicationSchedule, NotificationPreferences, Note,
+  FoodLog, HealthMetric, HealthMetricType, MedicationLog, MedicationSchedule, NotificationPreferences, Note,
   Patient, PatientCondition, Reminder, SupplementDatabaseEntry, Symptom,
   SupplementLog, SupplementSchedule,
   TrackingEntry, TriggerLog, View,
@@ -38,6 +38,8 @@ interface State {
   supplementDatabase: SupplementDatabaseEntry[];
   notificationPrefs: NotificationPreferences;
   reminders: Reminder[];
+  healthMetrics: HealthMetric[];       // loaded from Supabase on demand — not persisted locally
+  healthkitApiKey?: string;            // persisted locally + cloud-synced
   selectedConditionId: string | null;
   view: View;
 }
@@ -64,6 +66,8 @@ const initialState: State = {
   supplementDatabase: [],
   notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
   reminders: [],
+  healthMetrics: [],
+  healthkitApiKey: undefined,
   selectedConditionId: null,
   view: 'dashboard',
 };
@@ -116,6 +120,8 @@ type Action =
   | { type: 'UPDATE_REMINDER'; id: string; patch: Partial<Omit<Reminder, 'id' | 'patientId' | 'createdAt'>> }
   | { type: 'DELETE_REMINDER'; id: string }
   | { type: 'TOGGLE_REMINDER'; id: string }
+  | { type: 'SET_HEALTH_METRICS'; metrics: HealthMetric[] }
+  | { type: 'SET_HEALTHKIT_API_KEY'; key: string | undefined }
   | { type: 'SELECT_CONDITION'; id: string | null }
   | { type: 'SET_VIEW'; view: View }
   | { type: 'LOAD'; state: State }
@@ -136,6 +142,8 @@ function reducer(state: State, action: Action): State {
         selectedConditionId: state.selectedConditionId,
         // supplementDatabase is loaded from its own Supabase table — never overwrite it
         supplementDatabase: state.supplementDatabase,
+        // healthMetrics loaded from Supabase on demand — never stored in cloud state
+        healthMetrics: state.healthMetrics,
       };
 
     case 'REMOVE_DEMO_DATA': {
@@ -488,6 +496,12 @@ function reducer(state: State, action: Action): State {
         ),
       };
 
+    case 'SET_HEALTH_METRICS':
+      return { ...state, healthMetrics: action.metrics };
+
+    case 'SET_HEALTHKIT_API_KEY':
+      return { ...state, healthkitApiKey: action.key };
+
     case 'SELECT_CONDITION':
       return { ...state, selectedConditionId: action.id };
 
@@ -561,6 +575,8 @@ function migrateV1ToV2(): State | null {
       supplementDatabase: [],
       notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
       reminders: [],
+      healthMetrics: [],
+      healthkitApiKey: undefined,
       selectedConditionId: (v1.selectedConditionId as string | null) ?? null,
       view: 'dashboard',
     };
@@ -591,6 +607,8 @@ function loadInitialState(): State {
           supplementDatabase: saved.supplementDatabase ?? [],
           notificationPrefs: saved.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS,
           reminders: saved.reminders ?? [],
+          healthMetrics: [],
+          healthkitApiKey: saved.healthkitApiKey ?? undefined,
           selectedConditionId: saved.selectedConditionId ?? null,
           view: 'dashboard',
         };
@@ -684,6 +702,8 @@ interface ContextValue {
   syncWithCloud: () => Promise<void>;
   loadFromCloud: () => Promise<void>;
   restoreFromCloud: (payload: Partial<State>) => void;
+  setHealthkitApiKey: (key: string | undefined) => void;
+  loadHealthMetrics: () => Promise<void>;
 }
 
 const AppContext = createContext<ContextValue | null>(null);
@@ -711,12 +731,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supplementDatabase: state.supplementDatabase,
         notificationPrefs: state.notificationPrefs,
         reminders: state.reminders,
+        healthkitApiKey: state.healthkitApiKey,
         selectedConditionId: state.selectedConditionId,
       }));
     } catch {
       // ignore quota errors
     }
-  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.supplementDatabase, state.notificationPrefs, state.reminders, state.selectedConditionId]);
+  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.supplementDatabase, state.notificationPrefs, state.reminders, state.healthkitApiKey, state.selectedConditionId]);
 
   const createPatient = useCallback((name: string, conditionIds: string[], extra?: { dateOfBirth?: string; notes?: string; diagnosis?: string }) => {
     const id = `pat-${Date.now()}`;
@@ -1281,6 +1302,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'RESTORE_STATE', payload });
   }, []);
 
+  const setHealthkitApiKey = useCallback((key: string | undefined) => {
+    dispatch({ type: 'SET_HEALTHKIT_API_KEY', key });
+  }, []);
+
+  const loadHealthMetrics = useCallback(async () => {
+    if (!CLOUD_ENABLED || !supabase) return;
+    try {
+      const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from('health_metrics')
+        .select('id, date, type, value, unit, source, created_at')
+        .gte('date', cutoff)
+        .order('date', { ascending: false });
+      if (error) { console.error('[healthkit] loadHealthMetrics:', error); return; }
+      const metrics: HealthMetric[] = (data ?? []).map(r => ({
+        id: r.id as string,
+        date: r.date as string,
+        type: r.type as HealthMetricType,
+        value: r.value as number,
+        unit: r.unit as string,
+        source: r.source as string,
+        createdAt: new Date(r.created_at as string).getTime(),
+      }));
+      dispatch({ type: 'SET_HEALTH_METRICS', metrics });
+    } catch (err) {
+      console.error('[healthkit] loadHealthMetrics exception:', err);
+    }
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -1342,6 +1392,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         syncWithCloud,
         loadFromCloud,
         restoreFromCloud,
+        setHealthkitApiKey,
+        loadHealthMetrics,
       }}
     >
       {children}
