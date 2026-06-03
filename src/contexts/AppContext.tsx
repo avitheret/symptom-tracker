@@ -3,7 +3,7 @@ import type {
   AIInsight, Condition, DailyCheckIn, ExtractionResult, ExtractionStatus,
   ExtractedCheckIn, ExtractedMedication, ExtractedSupplement, ExtractedSymptom, ExtractedTrigger,
   FoodLog, HealthMetric, HealthMetricType, MedicationLog, MedicationSchedule, NotificationPreferences, Note,
-  Patient, PatientCondition, Reminder, SupplementDatabaseEntry, Symptom,
+  Patient, PatientCondition, Reminder, StoolLog, SupplementDatabaseEntry, Symptom,
   SupplementLog, SupplementSchedule,
   TrackingEntry, TriggerLog, View,
 } from '../types';
@@ -38,6 +38,7 @@ interface State {
   supplementDatabase: SupplementDatabaseEntry[];
   notificationPrefs: NotificationPreferences;
   reminders: Reminder[];
+  stoolLogs: StoolLog[];
   healthMetrics: HealthMetric[];       // loaded from Supabase on demand — not persisted locally
   healthkitApiKey?: string;            // persisted locally + cloud-synced
   selectedConditionId: string | null;
@@ -66,6 +67,7 @@ const initialState: State = {
   supplementDatabase: [],
   notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
   reminders: [],
+  stoolLogs: [],
   healthMetrics: [],
   healthkitApiKey: undefined,
   selectedConditionId: null,
@@ -120,6 +122,8 @@ type Action =
   | { type: 'UPDATE_REMINDER'; id: string; patch: Partial<Omit<Reminder, 'id' | 'patientId' | 'createdAt'>> }
   | { type: 'DELETE_REMINDER'; id: string }
   | { type: 'TOGGLE_REMINDER'; id: string }
+  | { type: 'ADD_STOOL_LOG'; log: StoolLog }
+  | { type: 'DELETE_STOOL_LOG'; id: string }
   | { type: 'SET_HEALTH_METRICS'; metrics: HealthMetric[] }
   | { type: 'SET_HEALTHKIT_API_KEY'; key: string | undefined }
   | { type: 'SELECT_CONDITION'; id: string | null }
@@ -155,6 +159,7 @@ function reducer(state: State, action: Action): State {
         checkIns:            state.checkIns.filter(e => !isDemo(e.id)),
         medicationLogs:      state.medicationLogs.filter(e => !isDemo(e.id)),
         supplementLogs:      (state.supplementLogs ?? []).filter(e => !isDemo(e.id)),
+        stoolLogs:           state.stoolLogs.filter(e => !isDemo(e.id)),
         medicationSchedules: state.medicationSchedules.filter(e => !isDemo(e.id)),
         supplementSchedules: (state.supplementSchedules ?? []).filter(e => !isDemo(e.id)),
       };
@@ -194,6 +199,7 @@ function reducer(state: State, action: Action): State {
         supplementSchedules: (state.supplementSchedules ?? []).filter(s => s.patientId !== action.id),
         supplementDatabase: (state.supplementDatabase ?? []).filter(e => e.patientId !== action.id),
         reminders: (state.reminders ?? []).filter(r => r.patientId !== action.id),
+        stoolLogs: state.stoolLogs.filter(l => l.patientId !== action.id),
       };
     }
 
@@ -496,6 +502,12 @@ function reducer(state: State, action: Action): State {
         ),
       };
 
+    case 'ADD_STOOL_LOG':
+      return { ...state, stoolLogs: [...state.stoolLogs, action.log] };
+
+    case 'DELETE_STOOL_LOG':
+      return { ...state, stoolLogs: state.stoolLogs.filter(l => l.id !== action.id) };
+
     case 'SET_HEALTH_METRICS':
       return { ...state, healthMetrics: action.metrics };
 
@@ -575,6 +587,7 @@ function migrateV1ToV2(): State | null {
       supplementDatabase: [],
       notificationPrefs: DEFAULT_NOTIFICATION_PREFS,
       reminders: [],
+      stoolLogs: [],
       healthMetrics: [],
       healthkitApiKey: undefined,
       selectedConditionId: (v1.selectedConditionId as string | null) ?? null,
@@ -607,6 +620,7 @@ function loadInitialState(): State {
           supplementDatabase: saved.supplementDatabase ?? [],
           notificationPrefs: saved.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS,
           reminders: saved.reminders ?? [],
+          stoolLogs: saved.stoolLogs ?? [],
           healthMetrics: [],
           healthkitApiKey: saved.healthkitApiKey ?? undefined,
           selectedConditionId: saved.selectedConditionId ?? null,
@@ -702,6 +716,8 @@ interface ContextValue {
   syncWithCloud: () => Promise<void>;
   loadFromCloud: () => Promise<void>;
   restoreFromCloud: (payload: Partial<State>) => void;
+  addStoolLog: (log: Omit<StoolLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => void;
+  deleteStoolLog: (id: string) => void;
   setHealthkitApiKey: (key: string | undefined) => void;
   loadHealthMetrics: () => Promise<void>;
 }
@@ -731,13 +747,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supplementDatabase: state.supplementDatabase,
         notificationPrefs: state.notificationPrefs,
         reminders: state.reminders,
+        stoolLogs: state.stoolLogs,
         healthkitApiKey: state.healthkitApiKey,
         selectedConditionId: state.selectedConditionId,
       }));
     } catch {
       // ignore quota errors
     }
-  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.supplementDatabase, state.notificationPrefs, state.reminders, state.healthkitApiKey, state.selectedConditionId]);
+  }, [state.patients, state.activePatientId, state.entries, state.triggerLogs, state.checkIns, state.medicationLogs, state.foodLogs, state.notes, state.aiInsights, state.medicationSchedules, state.supplementLogs, state.supplementSchedules, state.supplementDatabase, state.notificationPrefs, state.reminders, state.stoolLogs, state.healthkitApiKey, state.selectedConditionId]);
 
   const createPatient = useCallback((name: string, conditionIds: string[], extra?: { dateOfBirth?: string; notes?: string; diagnosis?: string }) => {
     const id = `pat-${Date.now()}`;
@@ -1302,6 +1319,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'RESTORE_STATE', payload });
   }, []);
 
+  const addStoolLog = useCallback(
+    (log: Omit<StoolLog, 'id' | 'dayOfWeek' | 'createdAt' | 'patientId'>) => {
+      const patientId = state.activePatientId;
+      if (!patientId) return;
+      const stoolEntry: StoolLog = {
+        ...log,
+        id:        `stool-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        patientId,
+        dayOfWeek: getDayOfWeek(log.date),
+        createdAt: Date.now(),
+      };
+      dispatch({ type: 'ADD_STOOL_LOG', log: stoolEntry });
+    },
+    [state.activePatientId]
+  );
+
+  const deleteStoolLog = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_STOOL_LOG', id });
+  }, []);
+
   const setHealthkitApiKey = useCallback((key: string | undefined) => {
     dispatch({ type: 'SET_HEALTHKIT_API_KEY', key });
   }, []);
@@ -1392,6 +1429,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         syncWithCloud,
         loadFromCloud,
         restoreFromCloud,
+        addStoolLog,
+        deleteStoolLog,
         setHealthkitApiKey,
         loadHealthMetrics,
       }}

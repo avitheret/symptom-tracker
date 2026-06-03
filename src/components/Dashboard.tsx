@@ -15,11 +15,12 @@ import SupplementScheduleWidget from './SupplementScheduleWidget';
 import DashboardRemindersCard from './DashboardRemindersCard';
 import DashboardCustomizer from './DashboardCustomizer';
 import HealthMetricsCard from './HealthMetricsCard';
+import StoolWidget from './StoolWidget';
 import { Button, Card, SectionHeader, StatCard, SeverityBadge, Badge, EmptyState } from './ui';
 import type { Condition, WidgetId, FoodLog, SupplementLog } from '../types';
 import { DEFAULT_WIDGETS, MEAL_TYPES } from '../types';
 
-const APP_VERSION = 'v3.23.0';
+const APP_VERSION = 'v3.24.0';
 
 const PREFS_KEY = 'st-dashboard-prefs';
 
@@ -73,6 +74,12 @@ function loadPrefs(): WidgetId[] {
         const weatherIdx = saved.indexOf('weather');
         if (weatherIdx >= 0) saved.splice(weatherIdx + 1, 0, 'healthKit');
         else saved.unshift('healthKit');
+      }
+      // Migration: add stoolLog if missing (new widget in v3.24.0)
+      if (!saved.includes('stoolLog')) {
+        const checkinIdx = saved.indexOf('checkin');
+        if (checkinIdx >= 0) saved.splice(checkinIdx + 1, 0, 'stoolLog');
+        else saved.push('stoolLog');
       }
       localStorage.setItem(PREFS_KEY, JSON.stringify(saved));
       return saved;
@@ -779,6 +786,9 @@ export default function Dashboard({ onOpenCheckIn, onOpenTrigger, onOpenMedicati
 
           case 'healthKit':
             return <HealthMetricsCard key="healthKit" />;
+
+          case 'stoolLog':
+            return <StoolWidget key="stoolLog" />;
 
           case 'quickActions':
             return (

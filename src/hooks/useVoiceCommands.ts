@@ -33,6 +33,7 @@ export type VoiceCommand =
   | 'OPEN_MEDICATIONS'
   | 'OPEN_REMINDERS'
   | 'ADD_NOTE'
+  | 'LOG_STOOL'
   | 'FREE_FORM'
   | 'CANCEL';
 
@@ -226,6 +227,16 @@ const COMMAND_PATTERNS: Array<{ patterns: string[]; command: VoiceCommand; label
     ],
     command: 'LOG_MEAL',
     label: 'Log Meal',
+  },
+  {
+    patterns: [
+      'log stool', 'add stool', 'stool log', 'log bowel', 'bowel movement',
+      'add bowel', 'log bm', 'bm log', 'bathroom log', 'had a bowel',
+      'bowel log', 'log poop', 'poop log', 'log toilet', 'toilet log',
+      'went to the bathroom', 'had a movement', 'log gut',
+    ],
+    command: 'LOG_STOOL',
+    label: 'Log Stool',
   },
   {
     patterns: [

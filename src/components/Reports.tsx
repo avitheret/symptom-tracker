@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Trash2, Download, BarChart2, List, TrendingUp, Stethoscope, GitMerge, Pill, Zap, Brain, Cloud, UtensilsCrossed, FlaskConical, Activity } from 'lucide-react';
+import { Trash2, Download, BarChart2, List, TrendingUp, Stethoscope, GitMerge, Pill, Zap, Brain, Cloud, UtensilsCrossed, FlaskConical, Activity, Droplets } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { useApp } from '../contexts/AppContext';
 import DoctorReport from './DoctorReport';
+import StoolReportsSection from './StoolReportsSection';
 import OverviewChart from './OverviewChart';
 import CorrelationCharts from './CorrelationCharts';
 import MedicationTab from './MedicationTab';
@@ -22,7 +23,7 @@ import { MEAL_TYPES } from '../types';
 
 type Range     = '7d' | '30d' | '90d' | 'all';
 type ChartType = 'line' | 'bar';
-type ReportTab = 'overview' | 'chart' | 'log' | 'triggers' | 'rootCauses' | 'weather' | 'food' | 'medications' | 'supplements' | 'correlations' | 'doctor';
+type ReportTab = 'overview' | 'chart' | 'log' | 'triggers' | 'rootCauses' | 'weather' | 'food' | 'medications' | 'supplements' | 'stool' | 'correlations' | 'doctor';
 
 const RANGE_OPTIONS: Array<{ id: Range; label: string }> = [
   { id: '7d',  label: '7 Days'   },
@@ -41,6 +42,7 @@ const REPORT_TABS: TabItem<ReportTab>[] = [
   { id: 'food',         label: 'Food',         icon: <UtensilsCrossed size={14} /> },
   { id: 'medications',  label: 'Meds',         icon: <Pill            size={14} /> },
   { id: 'supplements',  label: 'Supps',        icon: <FlaskConical    size={14} /> },
+  { id: 'stool',        label: 'Stool',        icon: <Droplets        size={14} /> },
   { id: 'correlations', label: 'Correlations', icon: <GitMerge    size={14} /> },
   { id: 'doctor',       label: 'Doctor',       icon: <Stethoscope size={14} /> },
 ];
@@ -686,6 +688,9 @@ export default function Reports() {
 
       {/* ── Supplements tab ──────────────────────────────── */}
       {tab === 'supplements' && <Supplements />}
+
+      {/* ── Stool tab ────────────────────────────────────── */}
+      {tab === 'stool' && <StoolReportsSection range={range} />}
 
       {/* ── Doctor report tab ─────────────────────────────── */}
       {tab === 'doctor' && (

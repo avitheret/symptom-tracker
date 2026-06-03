@@ -131,7 +131,7 @@ export interface DailyCheckIn {
 
 // ── Dashboard Widgets ───────────────────────────────────────────────────────
 
-export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'recentMeals' | 'medSchedule' | 'supplements' | 'weather' | 'healthKit';
+export type WidgetId = 'stats' | 'forecast' | 'explainToday' | 'checkin' | 'voiceReview' | 'aiInsights' | 'quickActions' | 'conditions' | 'recentLog' | 'recentMeals' | 'medSchedule' | 'supplements' | 'weather' | 'healthKit' | 'stoolLog';
 
 export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string }> = {
   stats:        { label: 'Summary Stats',    description: 'Total entries, weekly count, average severity' },
@@ -148,15 +148,16 @@ export const WIDGET_DEFS: Record<WidgetId, { label: string; description: string 
   supplements:  { label: 'Supplements',    description: 'Daily supplement schedule with dose tracking' },
   weather:      { label: 'Weather Tracker', description: 'Auto-track pressure, humidity, storms — migraine triggers' },
   healthKit:    { label: 'Apple Health',    description: 'Sleep, Heart Rate, Steps, HRV & Blood Pressure from iPhone' },
+  stoolLog:     { label: 'Stool Log',       description: 'Quick bowel movement log — Bristol type, amount, flags & trends' },
 };
 
-export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'healthKit', 'checkin', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentMeals', 'recentLog', 'medSchedule', 'supplements'];
+export const DEFAULT_WIDGETS: WidgetId[] = ['stats', 'forecast', 'explainToday', 'weather', 'healthKit', 'checkin', 'stoolLog', 'voiceReview', 'aiInsights', 'quickActions', 'conditions', 'recentMeals', 'recentLog', 'medSchedule', 'supplements'];
 
 // ── Existing analytics types ─────────────────────────────────────────────────
 
 export const ONBOARDING_CONDITION_LIMIT = 1;
 
-export type View = 'dashboard' | 'conditions' | 'meals' | 'supplements' | 'meds' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin' | 'reminders';
+export type View = 'dashboard' | 'conditions' | 'meals' | 'supplements' | 'meds' | 'reports' | 'insights' | 'patients' | 'notes' | 'admin' | 'reminders' | 'stool';
 
 // ── Reminders ─────────────────────────────────────────────────────────────────
 
@@ -492,4 +493,45 @@ export interface AIInsight {
   actionable?: string;         // one suggested change
   entryCount?: number;         // provenance: how many entries analysed
   daySpan?: number;            // provenance: how many days covered
+}
+
+// ── Stool / Bowel Movement Tracking ──────────────────────────────────────────
+
+export type BristolType    = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type StoolAmount    = 'small' | 'medium' | 'large';
+export type StoolSmell     = 'none' | 'usual' | 'strong';
+export type StoolUrgency   = 'none' | 'soon' | 'urgent';
+export type StoolPain      = 'none' | 'mild' | 'moderate' | 'severe';
+
+/** All clinically common unusual stool features (GI literature). */
+export const STOOL_UNUSUAL_FEATURES = [
+  'blood',            // red blood in or on stool
+  'mucus',            // white / clear coating
+  'pale',             // pale, grey or clay-coloured
+  'dark',             // very dark / black (melena)
+  'undigested food',  // visible undigested particles
+  'green',            // green colour (bile transit / diet)
+  'frothy',           // foamy, bubbly (fat malabsorption)
+  'narrow',           // pencil-thin / ribbon-like
+] as const;
+
+export type StoolUnusualFeature = typeof STOOL_UNUSUAL_FEATURES[number];
+
+export interface StoolLog {
+  id:                 string;
+  patientId:          string;
+  date:               string;                  // YYYY-MM-DD
+  dayOfWeek:          string;
+  time:               string;                  // HH:MM
+  bristolType:        BristolType;
+  amount:             StoolAmount;
+  greasy:             boolean;
+  floats:             boolean;
+  smell:              StoolSmell;
+  urgency:            StoolUrgency;
+  incompleteEmptying: boolean;
+  pain:               StoolPain;
+  unusualFeatures:    StoolUnusualFeature[];
+  notes?:             string;
+  createdAt:          number;
 }

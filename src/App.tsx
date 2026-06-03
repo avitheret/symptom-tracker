@@ -45,6 +45,8 @@ import { useSupplementScheduleSync } from './hooks/useSupplementScheduleSync';
 import { useCloudStateSync } from './hooks/useCloudStateSync';
 import { extractFromNote } from './utils/noteExtractor';
 import BadDaySheet from './components/BadDaySheet';
+import StoolView from './components/StoolView';
+import StoolLogModal from './components/StoolLogModal';
 import Landing from './components/Landing';
 import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType, SupplementSchedule } from './types';
 
@@ -123,7 +125,8 @@ function AppContent() {
   const [toastLabel, setToastLabel] = useState('');
   const [inlineToast, setInlineToast] = useState<string | null>(null);
   const inlineToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [showBadDay, setShowBadDay] = useState(false);
+  const [showBadDay,   setShowBadDay]   = useState(false);
+  const [showStoolLog, setShowStoolLog] = useState(false);
   // When a full inline voice command matches (e.g. "log dizziness to migraine"),
   // open TrackingModal directly — bypassing the condition picker.
   const [voiceTrackTarget, setVoiceTrackTarget] =
@@ -240,6 +243,10 @@ function AppContent() {
         break;
       case 'LOG_MEAL':
         openFoodLog(mealPrefill?.mealType, mealPrefill?.time);
+        break;
+      case 'LOG_STOOL':
+        disableWakeWord();
+        setShowStoolLog(true);
         break;
       case 'LOG_SUPPLEMENT': {
         // If a specific name was extracted AND it matches an active schedule → direct log, no modal
@@ -532,6 +539,7 @@ function AppContent() {
           </div>
         )}
         {state.view === 'meals' && <MealsView onOpenFoodLog={openFoodLog} onEditMeal={openFoodLogForEdit} />}
+        {state.view === 'stool' && <StoolView />}
         {state.view === 'reports' && (
           <Reports />
         )}
@@ -675,6 +683,11 @@ function AppContent() {
       {/* Bad Day quick-log sheet */}
       {showBadDay && (
         <BadDaySheet onClose={() => setShowBadDay(false)} />
+      )}
+
+      {/* Stool log modal (voice-triggered or widget) */}
+      {showStoolLog && (
+        <StoolLogModal onClose={() => { setShowStoolLog(false); enableWakeWord(); }} />
       )}
 
       {/* Supplement log modal */}

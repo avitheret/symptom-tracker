@@ -55,6 +55,7 @@ export function useCloudStateSync() {
     supplementSchedules:  state.supplementSchedules,
     notificationPrefs:    state.notificationPrefs,
     reminders:            state.reminders,
+    stoolLogs:            state.stoolLogs,
     // HealthKit API key is small and should sync across devices
     healthkitApiKey:      state.healthkitApiKey,
   });
@@ -162,6 +163,7 @@ export function useCloudStateSync() {
     state.supplementSchedules,
     state.notificationPrefs,
     state.reminders,
+    state.stoolLogs,
     state.healthkitApiKey,
   ]);
 
