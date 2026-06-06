@@ -47,7 +47,7 @@ import { extractFromNote } from './utils/noteExtractor';
 import BadDaySheet from './components/BadDaySheet';
 import StoolView from './components/StoolView';
 import StoolLogModal from './components/StoolLogModal';
-import Landing from './components/Landing';
+// import Landing from './components/Landing'; // AUTH GATE DISABLED
 import type { Condition, FoodLog, Symptom, ExtractionResult, Note, MedicationSchedule, MealType, SupplementSchedule } from './types';
 
 // ─── Fuzzy condition / symptom matching ──────────────────────────────────────
@@ -491,17 +491,15 @@ function AppContent() {
     );
   }
 
-  // Logged-out users see the landing page instead of the full app.
-  // AuthModal is rendered here too so the CTA can open it without going
-  // through the full app shell.
-  if (!isAuthenticated) {
-    return (
-      <>
-        <Landing onGetStarted={() => setShowAuth(true)} />
-        {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
-      </>
-    );
-  }
+  // AUTH GATE TEMPORARILY DISABLED — re-enable by restoring the block below
+  // if (!isAuthenticated) {
+  //   return (
+  //     <>
+  //       <Landing onGetStarted={() => setShowAuth(true)} />
+  //       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+  //     </>
+  //   );
+  // }
 
   return (
     <div className={`min-h-screen flex flex-col ${state.view === 'dashboard' ? 'bg-[#1a1f3c]' : 'bg-slate-50'}`}>
